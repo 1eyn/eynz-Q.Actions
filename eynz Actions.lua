@@ -6,6 +6,7 @@ local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
+local GuiService = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -29,7 +30,7 @@ end
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MobileQoL_UI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true -- Ensures crosshairs align perfectly with simulated mouse
+ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = ParentGui
 
@@ -37,13 +38,13 @@ ScreenGui.Parent = ParentGui
 local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
 ---------------------------------------------------------------------
--- 1. LAUNCHER (Moved Up & Made Shorter)
+-- 1. LAUNCHER (Squircle / Rounded on edge)
 ---------------------------------------------------------------------
 local Launcher = Instance.new("TextButton")
 Launcher.Name = "Launcher"
 Launcher.AnchorPoint = Vector2.new(1, 0.5)
-Launcher.Position = UDim2.new(1, 0, 0.4, 0) -- Moved higher up
-Launcher.Size = UDim2.new(0, 26, 0.45, 0) -- Made the length significantly shorter
+Launcher.Position = UDim2.new(1, 0, 0.4, 0)
+Launcher.Size = UDim2.new(0, 26, 0.45, 0)
 Launcher.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Launcher.BackgroundTransparency = 0.35
 Launcher.BorderSizePixel = 0
@@ -74,26 +75,22 @@ LauncherText.Text = "Q\nU\nI\nC\nK\n\nA\nC\nT\nI\nO\nN\nS"
 LauncherText.Parent = Launcher
 
 ---------------------------------------------------------------------
--- 2. MAIN MENU PANEL
+-- 2. MAIN MENU PANEL (Square & Grayish Blue)
 ---------------------------------------------------------------------
 local MenuPanel = Instance.new("Frame")
 MenuPanel.Name = "MenuPanel"
 MenuPanel.AnchorPoint = Vector2.new(1, 0.5)
-MenuPanel.Position = UDim2.new(1, 0, 0.4, 0) -- Matches Launcher position
-MenuPanel.Size = UDim2.new(0, 0, 0.5, 0) -- Matches shorter height visually
-MenuPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MenuPanel.Position = UDim2.new(1, 0, 0.4, 0)
+MenuPanel.Size = UDim2.new(0, 0, 0.5, 0)
+MenuPanel.BackgroundColor3 = Color3.fromRGB(32, 43, 56) -- Grayish Blue
 MenuPanel.BackgroundTransparency = 0.35
 MenuPanel.BorderSizePixel = 0
 MenuPanel.ClipsDescendants = true
 MenuPanel.Parent = ScreenGui
 
-local MenuCorner = Instance.new("UICorner")
-MenuCorner.CornerRadius = UDim.new(0, 14)
-MenuCorner.Parent = MenuPanel
-
 local MenuStroke = Instance.new("UIStroke")
-MenuStroke.Color = Color3.fromRGB(255, 255, 255)
-MenuStroke.Transparency = 0.85
+MenuStroke.Color = Color3.fromRGB(180, 205, 230)
+MenuStroke.Transparency = 0.8
 MenuStroke.Thickness = 1
 MenuStroke.Parent = MenuPanel
 
@@ -121,19 +118,21 @@ Title.Size = UDim2.new(1, 0, 0, 24)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
 Title.Text = "QUICK ACTIONS"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextColor3 = Color3.fromRGB(240, 245, 255)
 Title.TextSize = 13
 Title.LayoutOrder = 0
 Title.Parent = ContentContainer
 
 ---------------------------------------------------------------------
--- 3. CROSSHAIR & POINTER ELEMENTS (Moved slightly up)
+-- 3. CROSSHAIR, TOUCH POINTER & SHIFTLOCK CENTER ICON (Lowered)
 ---------------------------------------------------------------------
+local CROSSHAIR_Y = 0.45 -- Tiny bit lower than 0.42
+
 -- Camera Toggle Crosshair
 local Crosshair = Instance.new("Frame")
 Crosshair.Name = "Crosshair"
 Crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
-Crosshair.Position = UDim2.new(0.5, 0, 0.42, 0) -- Moved up from 0.5
+Crosshair.Position = UDim2.new(0.5, 0, CROSSHAIR_Y, 0)
 Crosshair.Size = UDim2.new(0, 16, 0, 16)
 Crosshair.BackgroundTransparency = 1
 Crosshair.Visible = false
@@ -143,8 +142,8 @@ local CrossH = Instance.new("Frame")
 CrossH.AnchorPoint = Vector2.new(0.5, 0.5)
 CrossH.Position = UDim2.new(0.5, 0, 0.5, 0)
 CrossH.Size = UDim2.new(0, 16, 0, 2)
-CrossH.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
-CrossH.BackgroundTransparency = 0.35
+CrossH.BackgroundColor3 = Color3.fromRGB(220, 230, 240)
+CrossH.BackgroundTransparency = 0.2
 CrossH.BorderSizePixel = 0
 CrossH.Parent = Crosshair
 
@@ -152,8 +151,8 @@ local CrossV = Instance.new("Frame")
 CrossV.AnchorPoint = Vector2.new(0.5, 0.5)
 CrossV.Position = UDim2.new(0.5, 0, 0.5, 0)
 CrossV.Size = UDim2.new(0, 2, 0, 16)
-CrossV.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
-CrossV.BackgroundTransparency = 0.35
+CrossV.BackgroundColor3 = Color3.fromRGB(220, 230, 240)
+CrossV.BackgroundTransparency = 0.2
 CrossV.BorderSizePixel = 0
 CrossV.Parent = Crosshair
 
@@ -161,7 +160,7 @@ CrossV.Parent = Crosshair
 local TouchPointer = Instance.new("Frame")
 TouchPointer.Name = "TouchPointer"
 TouchPointer.AnchorPoint = Vector2.new(0.5, 0.5)
-TouchPointer.Position = UDim2.new(0.5, 0, 0.42, 0) -- Moved up from 0.5
+TouchPointer.Position = UDim2.new(0.5, 0, CROSSHAIR_Y, 0)
 TouchPointer.Size = UDim2.new(0, 6, 0, 6)
 TouchPointer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 TouchPointer.BorderSizePixel = 0
@@ -172,27 +171,26 @@ local PointerCorner = Instance.new("UICorner")
 PointerCorner.CornerRadius = UDim.new(1, 0)
 PointerCorner.Parent = TouchPointer
 
----------------------------------------------------------------------
--- 4. FLOATING SHIFT LOCK BUTTON (Original Icon)
----------------------------------------------------------------------
-local ShiftLockButton = Instance.new("ImageButton")
-ShiftLockButton.Name = "FloatingShiftLock"
-ShiftLockButton.AnchorPoint = Vector2.new(0.5, 0.5)
-ShiftLockButton.Size = UDim2.new(0, 45, 0, 45)
-ShiftLockButton.Position = UDim2.new(1, -120, 1, -120) -- Standard mobile offset
-ShiftLockButton.BackgroundTransparency = 1
-ShiftLockButton.Image = "rbxasset://textures/ui/mouseLock_off.png" -- Original off icon
-ShiftLockButton.Parent = ScreenGui
+-- Shift Lock Center Icon (appears in middle of screen when Shift Lock is ON)
+local ShiftLockCenterIcon = Instance.new("ImageLabel")
+ShiftLockCenterIcon.Name = "ShiftLockCenterIcon"
+ShiftLockCenterIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+ShiftLockCenterIcon.Position = UDim2.new(0.5, 0, CROSSHAIR_Y, 0)
+ShiftLockCenterIcon.Size = UDim2.new(0, 32, 0, 32)
+ShiftLockCenterIcon.BackgroundTransparency = 1
+ShiftLockCenterIcon.Image = "rbxasset://textures/MouseLockedCursor.png"
+ShiftLockCenterIcon.Visible = false
+ShiftLockCenterIcon.Parent = ScreenGui
 
 ---------------------------------------------------------------------
--- 5. BUTTON CREATION HELPERS
+-- 4. BUTTON CREATION HELPERS (Square)
 ---------------------------------------------------------------------
 local function createButton(name, text, color, callback, order)
     local btn = Instance.new("TextButton")
     btn.Name = name
     btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45)
-    btn.BackgroundTransparency = 0.4
+    btn.BackgroundColor3 = color or Color3.fromRGB(48, 62, 80)
+    btn.BackgroundTransparency = 0.35
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamMedium
     btn.Text = text
@@ -201,10 +199,6 @@ local function createButton(name, text, color, callback, order)
     btn.AutoButtonColor = true
     btn.LayoutOrder = order or 1
     btn.Parent = ContentContainer
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 7)
-    corner.Parent = btn
 
     btn.MouseButton1Click:Connect(callback)
     return btn
@@ -216,25 +210,21 @@ local function createToggle(name, text, defaultState, callback, order)
     local btn = Instance.new("TextButton")
     btn.Name = name
     btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = state and Color3.fromRGB(35, 90, 45) or Color3.fromRGB(45, 45, 45)
-    btn.BackgroundTransparency = 0.4
+    btn.BackgroundColor3 = state and Color3.fromRGB(38, 92, 90) or Color3.fromRGB(48, 62, 80)
+    btn.BackgroundTransparency = 0.35
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamMedium
     btn.Text = text .. ": " .. (state and "ON" or "OFF")
-    btn.TextColor3 = state and Color3.fromRGB(160, 255, 160) or Color3.fromRGB(220, 220, 220)
+    btn.TextColor3 = state and Color3.fromRGB(170, 255, 220) or Color3.fromRGB(220, 225, 230)
     btn.TextSize = 11
     btn.AutoButtonColor = true
     btn.LayoutOrder = order or 1
     btn.Parent = ContentContainer
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 7)
-    corner.Parent = btn
-
     local function updateVisuals()
         btn.Text = text .. ": " .. (state and "ON" or "OFF")
-        btn.BackgroundColor3 = state and Color3.fromRGB(35, 90, 45) or Color3.fromRGB(45, 45, 45)
-        btn.TextColor3 = state and Color3.fromRGB(160, 255, 160) or Color3.fromRGB(220, 220, 220)
+        btn.BackgroundColor3 = state and Color3.fromRGB(38, 92, 90) or Color3.fromRGB(48, 62, 80)
+        btn.TextColor3 = state and Color3.fromRGB(170, 255, 220) or Color3.fromRGB(220, 225, 230)
     end
 
     btn.MouseButton1Click:Connect(function()
@@ -252,7 +242,7 @@ local function createToggle(name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 6. FEATURE LOGIC
+-- 5. FEATURE LOGIC
 ---------------------------------------------------------------------
 
 -- [A] Auto Jump Logic
@@ -272,19 +262,14 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- [B] Shift Lock Logic
+-- [B] Shift Lock Logic (Smooth Character Stepped rotation + Center Icon)
 local isShiftLock = false
-local shiftLockOffset = Vector3.new(1.75, 0.3, 0)
+local shiftLockOffset = Vector3.new(1.75, 0.25, 0)
 local defaultOffset = Vector3.new(0, 0, 0)
-local shiftLockToggleRef = nil
 
 local function toggleShiftLock(state)
     isShiftLock = state
-    ShiftLockButton.Image = state and "rbxasset://textures/ui/mouseLock_on.png" or "rbxasset://textures/ui/mouseLock_off.png"
-    
-    if shiftLockToggleRef then
-        shiftLockToggleRef.SetStateQuietly(state)
-    end
+    ShiftLockCenterIcon.Visible = state
 
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then
@@ -293,64 +278,77 @@ local function toggleShiftLock(state)
     end
 end
 
-ShiftLockButton.MouseButton1Click:Connect(function()
-    toggleShiftLock(not isShiftLock)
-end)
-
-RunService.RenderStepped:Connect(function()
+-- Smooth character alignment with zero physics jitter
+RunService:BindToRenderStep("SmoothShiftLockStep", Enum.RenderPriority.Character.Value, function()
     if isShiftLock then
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
-        if root then
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if root and hum and hum.Health > 0 then
             local _, y = Camera.CFrame.Rotation:ToEulerAnglesYXZ()
             root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, y, 0)
         end
     end
 end)
 
--- [C] Camera Toggle Logic (Moves Right but preserves 3rd Person rotation)
+-- [C] Camera Toggle Logic (PC-Style: Fixed to Right Shoulder, No Wobble)
 local isCameraToggle = false
-local cameraTween = nil
+local camOffsetLerp = 0
+local TARGET_CAM_OFFSET = Vector3.new(1.75, 0.25, 0)
 
 local function toggleCameraMode(state)
     isCameraToggle = state
     Crosshair.Visible = state
-
+    
+    -- Ensure humanoid's internal offset is clean so it doesn't rotate with character
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if hum then
-        if cameraTween then cameraTween:Cancel() end
-        -- Offset to right like shift lock, but without turning off AutoRotate
-        local targetOffset = state and Vector3.new(1.75, 0.3, 0) or Vector3.new(0, 0, 0)
-        cameraTween = TweenService:Create(hum, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-            CameraOffset = targetOffset
-        })
-        cameraTween:Play()
+    if hum and not isShiftLock then
+        hum.CameraOffset = defaultOffset
+        hum.AutoRotate = true
     end
 end
 
--- [D] Touch Pointer (Virtual Hover Simulator)
+-- Apply camera offset relative to camera view angle (prevents all movement wobble)
+RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Value + 1, function(dt)
+    local targetVal = isCameraToggle and 1 or 0
+    camOffsetLerp = camOffsetLerp + (targetVal - camOffsetLerp) * math.clamp(dt * 14, 0, 1)
+
+    if camOffsetLerp > 0.001 and not isShiftLock then
+        local offset = TARGET_CAM_OFFSET * camOffsetLerp
+        Camera.CFrame = Camera.CFrame * CFrame.new(offset)
+    end
+end)
+
+-- [D] Touch Pointer (Hover Simulator for Mobile)
 local isTouchPointer = false
 local function toggleTouchPointer(state)
     isTouchPointer = state
     TouchPointer.Visible = state
 end
 
--- Force virtual pointer to perfectly follow the visual touch pointer dot!
+-- Continuously simulates mouse movement on the exact pointer screen coordinates
 RunService.RenderStepped:Connect(function()
     if isTouchPointer then
-        local pointerPos = TouchPointer.AbsolutePosition + (TouchPointer.AbsoluteSize / 2)
+        local inset = GuiService:GetGuiInset()
+        local pos = TouchPointer.AbsolutePosition + (TouchPointer.AbsoluteSize / 2) + inset
         pcall(function()
-            VirtualInputManager:SendMouseMoveEvent(pointerPos.X, pointerPos.Y, workspace)
+            VirtualInputManager:SendMouseMoveEvent(pos.X, pos.Y, game)
         end)
     end
 end)
 
--- [E] Performance Stats
+-- [E] Performance Stats (Fixed Multi-Method Toggle)
 local function togglePerfStats()
-    pcall(function()
-        local gs = settings():GetService("GameSettings")
-        gs.PerformanceStatsVisible = not gs.PerformanceStatsVisible
+    local success = pcall(function()
+        local ugs = UserSettings():GetService("UserGameSettings")
+        ugs.PerformanceStatsVisible = not ugs.PerformanceStatsVisible
     end)
+    if not success then
+        pcall(function()
+            local gs = settings():GetService("GameSettings")
+            gs.PerformanceStatsVisible = not gs.PerformanceStatsVisible
+        end)
+    end
 end
 
 -- [F] Reset
@@ -403,38 +401,33 @@ local function serverHop()
 end
 
 ---------------------------------------------------------------------
--- 7. POPULATE UI BUTTONS
+-- 6. POPULATE UI BUTTONS
 ---------------------------------------------------------------------
 createToggle("AutoJumpToggle", "Auto Jump", true, setAutoJump, 1)
-
--- Sync the menu shiftlock toggle visually with the floating button
-shiftLockToggleRef = createToggle("ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
-
+createToggle("ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
 createToggle("CamToggle", "Camera Toggle", false, toggleCameraMode, 3)
 createToggle("TouchPointerToggle", "Touch Pointer", false, toggleTouchPointer, 4)
-createButton("PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(45, 45, 45), togglePerfStats, 5)
-createButton("ResetBtn", "Reset", Color3.fromRGB(95, 35, 35), quickReset, 6)
-createButton("RejoinBtn", "Rejoin", Color3.fromRGB(45, 45, 45), rejoinGame, 7)
-createButton("HopBtn", "Server Hop", Color3.fromRGB(45, 45, 45), serverHop, 8)
+createButton("PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 5)
+createButton("ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 6)
+createButton("RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 7)
+createButton("HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 8)
 
 ---------------------------------------------------------------------
--- 8. MENU EXPAND / COLLAPSE ANIMATION
+-- 7. MENU EXPAND / COLLAPSE ANIMATION
 ---------------------------------------------------------------------
 local isMenuOpen = false
-local panelWidth = 180 -- Optimal width for mobile thumb access
+local panelWidth = 180
 
 Launcher.MouseButton1Click:Connect(function()
     isMenuOpen = not isMenuOpen
     
     if isMenuOpen then
-        -- Expand from right to left (respects the new 0.4 y-position and 0.5 height)
         local targetSize = UDim2.new(0, panelWidth, 0.5, 0)
         local targetPos = UDim2.new(1, -28, 0.4, 0)
         
         TweenService:Create(MenuPanel, tweenInfo, {Size = targetSize, Position = targetPos}):Play()
         TweenService:Create(Launcher, tweenInfo, {BackgroundTransparency = 0.15}):Play()
     else
-        -- Collapse back into the right edge
         local targetSize = UDim2.new(0, 0, 0.5, 0)
         local targetPos = UDim2.new(1, 0, 0.4, 0)
         
