@@ -9,6 +9,7 @@ local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local SoundService = game:GetService("SoundService")
 local CoreGui = game:GetService("CoreGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -18,45 +19,54 @@ local Camera = workspace.CurrentCamera
 ---------------------------------------------------------------------
 local queueTeleport = (syn and syn.queue_on_teleport) 
     or queue_on_teleport 
+    or queueonteleport 
     or (fluxus and fluxus.queue_on_teleport) 
     or (queue_teleport)
+    or (getgenv and (getgenv().queue_on_teleport or getgenv().queueonteleport))
 
 local function getSelfExecutionCode()
-    if getgenv and getgenv().QoL_ScriptUrl then
-        return string.format("loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
-    elseif getgenv and getgenv().QoL_ScriptSource then
-        return getgenv().QoL_ScriptSource
+    if getgenv and getgenv().QoL_ScriptUrl and getgenv().QoL_ScriptUrl ~= "" then
+        return string.format("task.wait(1.5); loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
+    elseif getgenv and getgenv().QoL_ScriptSource and getgenv().QoL_ScriptSource ~= "" then
+        return string.format("task.wait(1.5); %s", getgenv().QoL_ScriptSource)
     end
 
     -- Persistent auto-cache fallback
     pcall(function()
         if writefile and readfile then
-            if not isfile("MobileQoL_AutoExec.lua") or (getgenv and getgenv().MobileQoL_RawSource) then
-                if getgenv and getgenv().MobileQoL_RawSource then
-                    writefile("MobileQoL_AutoExec.lua", getgenv().MobileQoL_RawSource)
-                end
+            if getgenv and getgenv().MobileQoL_RawSource then
+                writefile("MobileQoL_AutoExec.lua", getgenv().MobileQoL_RawSource)
             end
         end
     end)
 
-    return 'pcall(function() if readfile and isfile("MobileQoL_AutoExec.lua") then loadstring(readfile("MobileQoL_AutoExec.lua"))() end end)'
+    return [[
+        task.spawn(function()
+            task.wait(1.5)
+            if getgenv and getgenv().QoL_ScriptUrl then
+                pcall(function() loadstring(game:HttpGet(getgenv().QoL_ScriptUrl))() end)
+            elseif isfile and readfile and isfile("MobileQoL_AutoExec.lua") then
+                pcall(function() loadstring(readfile("MobileQoL_AutoExec.lua"))() end)
+            end
+        end)
+    ]]
 end
 
 local function queueScriptExecution()
-    local code = getSelfExecutionCode()
-    if queueTeleport and code then
-        pcall(function()
-            queueTeleport(code)
-        end)
+    if queueTeleport then
+        local code = getSelfExecutionCode()
+        if code then
+            pcall(function()
+                queueTeleport(code)
+            end)
+        end
     end
 end
 
 -- Teleport state safeguard
 pcall(function()
     LocalPlayer.OnTeleport:Connect(function(state)
-        if state == Enum.TeleportState.Started then
-            queueScriptExecution()
-        end
+        queueScriptExecution()
     end)
 end)
 
@@ -388,15 +398,7 @@ local function setAutoJump(val)
     end
 end
 
-local charAddedConn
-charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
-    local hum = char:WaitForChild("Humanoid", 6)
-    if hum then
-        hum.AutoJumpEnabled = autoJumpEnabled
-    end
-end)
-
--- [B] Anti-Wobble Shift Lock
+-- [B] Zero-Latency Smooth Shift Lock
 local isShiftLock = false
 local shiftLockOffset = Vector3.new(1.75, 0.25, 0)
 local defaultOffset = Vector3.new(0, 0, 0)
@@ -413,8 +415,8 @@ local function toggleShiftLock(state)
     end
 end
 
--- High precision lock using Camera Render priority with exact LookVector projection
-RunService:BindToRenderStep("StableShiftLock", Enum.RenderPriority.Camera.Value - 1, function()
+-- Bound to Enum.RenderPriority.Character (runs AFTER Camera calculation for 0-frame delay/zero lag)
+RunService:BindToRenderStep("StableShiftLock", Enum.RenderPriority.Character.Value, function()
     if isShiftLock then
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -423,14 +425,24 @@ RunService:BindToRenderStep("StableShiftLock", Enum.RenderPriority.Camera.Value 
         if root and hum and hum.Health > 0 then
             hum.AutoRotate = false
             
-            -- Flatten lookVector on horizontal plane (removes tilt wobble completely)
             local look = Camera.CFrame.LookVector
             local flatLook = Vector3.new(look.X, 0, look.Z)
             
             if flatLook.Magnitude > 0.001 then
-                flatLook = flatLook.Unit
-                root.CFrame = CFrame.lookAt(root.Position, root.Position + flatLook)
+                root.CFrame = CFrame.lookAt(root.Position, root.Position + flatLook.Unit)
             end
+        end
+    end
+end)
+
+local charAddedConn
+charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 6)
+    if hum then
+        hum.AutoJumpEnabled = autoJumpEnabled
+        if isShiftLock then
+            hum.CameraOffset = shiftLockOffset
+            hum.AutoRotate = false
         end
     end
 end)
@@ -461,54 +473,51 @@ RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Val
     end
 end)
 
--- [D] Mobile-Compatible Quick Leaderboard Toggle
+-- [D] Multi-Method Quick Leaderboard Toggle
 local leaderboardOpen = false
 local function toggleLeaderboard()
     pcall(function()
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
     end)
 
-    -- Attempt 1: Direct CoreGui Mobile TopBar button trigger
-    local toggledViaButton = false
+    -- Method 1: Virtual Keypress (Universal mobile/desktop CoreScript toggle)
+    task.spawn(function()
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Tab, false, game)
+            task.wait(0.02)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Tab, false, game)
+        end)
+    end)
+
+    -- Method 2: SetCore Toggle Fallback
+    pcall(function()
+        local success, isOpen = pcall(function()
+            return StarterGui:GetCore("PlayerListIsOpen")
+        end)
+        if success and typeof(isOpen) == "boolean" then
+            StarterGui:SetCore("PlayerListIsOpen", not isOpen)
+        else
+            leaderboardOpen = not leaderboardOpen
+            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpen)
+        end
+    end)
+
+    -- Method 3: Mobile Chrome / TopBar Button Connections
     pcall(function()
         local topBarApp = CoreGui:FindFirstChild("TopBarApp") or CoreGui:FindFirstChild("RobloxGui")
         if topBarApp then
-            local leaderboardsButton = topBarApp:FindFirstChild("LeaderboardIcon", true)
-                or topBarApp:FindFirstChild("PlayerList", true)
-                or topBarApp:FindFirstChild("PlayerListMaster", true)
-            
-            if leaderboardsButton and leaderboardsButton:IsA("GuiButton") then
-                for _, conn in pairs(getconnections(leaderboardsButton.Activated)) do
-                    conn:Fire()
-                    toggledViaButton = true
-                end
-                if not toggledViaButton then
-                    for _, conn in pairs(getconnections(leaderboardsButton.MouseButton1Click)) do
-                        conn:Fire()
-                        toggledViaButton = true
+            local targets = {"LeaderboardIcon", "PlayerList", "PlayerListMaster", "ChromeLeaderboard", "UnibarLeaderboard", "PlayerListBtn"}
+            for _, name in ipairs(targets) do
+                local btn = topBarApp:FindFirstChild(name, true)
+                if btn and (btn:IsA("GuiButton") or btn:IsA("ImageButton") or btn:IsA("TextButton")) then
+                    if getconnections then
+                        for _, conn in pairs(getconnections(btn.Activated)) do conn:Fire() end
+                        for _, conn in pairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
                     end
                 end
             end
         end
     end)
-
-    if toggledViaButton then return end
-
-    -- Attempt 2: SetCore toggle with dynamic fallback
-    local success, currentStatus = pcall(function()
-        return StarterGui:GetCore("PlayerListIsOpen")
-    end)
-
-    if success and typeof(currentStatus) == "boolean" then
-        pcall(function()
-            StarterGui:SetCore("PlayerListIsOpen", not currentStatus)
-        end)
-    else
-        leaderboardOpen = not leaderboardOpen
-        pcall(function()
-            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpen)
-        end)
-    end
 end
 
 -- [E] Performance Stats
@@ -538,13 +547,12 @@ local function quickReset()
     end
 end
 
--- [G] Rejoin (With Instant Script Queue)
+-- [G] Rejoin (With Reliable Instant Queue)
 local function rejoinGame()
     queueScriptExecution()
+    task.wait(0.1)
     pcall(function()
         if #Players:GetPlayers() <= 1 then
-            LocalPlayer:Kick("\n[eynz Actions] Rejoining...")
-            task.wait(0.5)
             TeleportService:Teleport(game.PlaceId, LocalPlayer)
         else
             TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
@@ -552,21 +560,24 @@ local function rejoinGame()
     end)
 end
 
--- [H] Server Hop (With Instant Script Queue)
+-- [H] Server Hop (With Reliable Instant Queue)
 local function serverHop()
     queueScriptExecution()
+    task.wait(0.1)
     pcall(function()
         local req = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
         if req then
-            local serversApi = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+            local serversApi = "https://games.roblox.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
             local res = req({Url = serversApi, Method = "GET"})
             local data = HttpService:JSONDecode(res.Body)
             
             if data and data.data then
                 for _, server in ipairs(data.data) do
-                    if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                        TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
-                        return
+                    if typeof(server) == "table" and server.playing and server.maxPlayers and server.id then
+                        if server.playing < server.maxPlayers and tostring(server.id) ~= tostring(game.JobId) then
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+                            return
+                        end
                     end
                 end
             end
