@@ -12,8 +12,35 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // Queue On Teleport Helper
-local queueTeleport = (syn and syn.queue_on_teleport) or queue_on_teleport or (fluxus and fluxus.queue_on_teleport)
+-- // Queue On Teleport Handler
+local queueTeleport = (syn and syn.queue_on_teleport) 
+    or queue_on_teleport 
+    or (fluxus and fluxus.queue_on_teleport) 
+    or (queue_teleport)
+
+local function queueScriptExecution()
+    local reExecCode
+    if getgenv and getgenv().QoL_ScriptUrl then
+        reExecCode = string.format("loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
+    elseif getgenv and getgenv().QoL_ScriptSource then
+        reExecCode = getgenv().QoL_ScriptSource
+    end
+
+    if queueTeleport and reExecCode then
+        pcall(function()
+            queueTeleport(reExecCode)
+        end)
+    end
+end
+
+-- Hook into OnTeleport as a secondary safeguard
+pcall(function()
+    LocalPlayer.OnTeleport:Connect(function(state)
+        if state == Enum.TeleportState.Started then
+            queueScriptExecution()
+        end
+    end)
+end)
 
 -- Safe UI Container
 local ParentGui
@@ -55,6 +82,7 @@ Launcher.BackgroundTransparency = 0.35
 Launcher.BorderSizePixel = 0
 Launcher.Text = ""
 Launcher.AutoButtonColor = false
+Launcher.ClipsDescendants = false
 Launcher.ZIndex = 10
 Launcher.Parent = ScreenGui
 
@@ -69,14 +97,16 @@ LauncherStroke.Thickness = 1
 LauncherStroke.Parent = Launcher
 
 local LauncherText = Instance.new("TextLabel")
-LauncherText.Name = "VerticalText"
-LauncherText.Size = UDim2.new(1, 0, 1, 0)
+LauncherText.Name = "RotatedText"
+LauncherText.AnchorPoint = Vector2.new(0.5, 0.5)
+LauncherText.Position = UDim2.new(0.5, 0, 0.5, 0)
+LauncherText.Size = UDim2.new(0, 200, 0, 26)
 LauncherText.BackgroundTransparency = 1
 LauncherText.Font = Enum.Font.GothamBold
 LauncherText.TextColor3 = Color3.fromRGB(255, 255, 255)
-LauncherText.TextSize = 10
-LauncherText.TextWrapped = true
-LauncherText.Text = "Q\nU\nI\nC\nK\n\nA\nC\nT\nI\nO\nN\nS"
+LauncherText.TextSize = 11
+LauncherText.Text = "eynz Actions"
+LauncherText.Rotation = 90
 LauncherText.ZIndex = 11
 LauncherText.Parent = Launcher
 
@@ -89,7 +119,6 @@ local PANEL_HEIGHT_SCALE = 0.5
 local MenuPanel = Instance.new("Frame")
 MenuPanel.Name = "MenuPanel"
 MenuPanel.AnchorPoint = Vector2.new(1, 0.5)
--- Starts hidden off-screen to the right
 MenuPanel.Position = UDim2.new(1, PANEL_WIDTH + 40, 0.4, 0)
 MenuPanel.Size = UDim2.new(0, PANEL_WIDTH, PANEL_HEIGHT_SCALE, 0)
 MenuPanel.BackgroundColor3 = Color3.fromRGB(32, 43, 56)
@@ -297,7 +326,7 @@ local function createToggle(parent, name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 5. TAB SWITCHING SYSTEM (Snappy & Fast)
+-- 5. TAB SWITCHING SYSTEM
 ---------------------------------------------------------------------
 local currentTab = "Actions"
 
@@ -306,14 +335,12 @@ local function switchTab(tabName)
     currentTab = tabName
 
     if tabName == "Actions" then
-        -- Fast button visual switch
         TweenService:Create(ActionsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(48, 62, 80), BackgroundTransparency = 0.2}):Play()
         ActionsTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         
         TweenService:Create(SettingsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(24, 32, 42), BackgroundTransparency = 0.5}):Play()
         SettingsTabBtn.TextColor3 = Color3.fromRGB(170, 180, 195)
 
-        -- Snappy view swap
         SettingsContent.Visible = false
         ActionsContent.Visible = true
     else
@@ -358,7 +385,7 @@ charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- [B] Super Smooth & Stable Shift Lock
+-- [B] Shift Lock
 local isShiftLock = false
 local shiftLockOffset = Vector3.new(1.75, 0.25, 0)
 local defaultOffset = Vector3.new(0, 0, 0)
@@ -375,7 +402,6 @@ local function toggleShiftLock(state)
     end
 end
 
--- Aligns player angle directly with Camera Y rotation seamlessly
 RunService:BindToRenderStep("SmoothShiftLockStep", Enum.RenderPriority.Character.Value + 1, function()
     if isShiftLock then
         local char = LocalPlayer.Character
@@ -415,13 +441,27 @@ RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Val
     end
 end)
 
--- [D] Quick Leaderboard Toggle
-local leaderboardVisible = true
+-- [D] Quick Leaderboard Toggle (Fixed)
+local leaderboardOpenFallback = false
 local function toggleLeaderboard()
-    leaderboardVisible = not leaderboardVisible
     pcall(function()
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, leaderboardVisible)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
     end)
+    
+    local success, currentStatus = pcall(function()
+        return StarterGui:GetCore("PlayerListIsOpen")
+    end)
+    
+    if success and typeof(currentStatus) == "boolean" then
+        pcall(function()
+            StarterGui:SetCore("PlayerListIsOpen", not currentStatus)
+        end)
+    else
+        leaderboardOpenFallback = not leaderboardOpenFallback
+        pcall(function()
+            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpenFallback)
+        end)
+    end
 end
 
 -- [E] Performance Stats
@@ -453,14 +493,10 @@ end
 
 -- [G] Rejoin (With Auto-Queue Script Execution)
 local function rejoinGame()
-    if queueTeleport then
-        pcall(function()
-            queueTeleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/..."))()]]) -- Or your loader if using external URL
-        end)
-    end
+    queueScriptExecution()
     pcall(function()
         if #Players:GetPlayers() <= 1 then
-            LocalPlayer:Kick("\n[QoL] Rejoining...")
+            LocalPlayer:Kick("\n[eynz Actions] Rejoining...")
             task.wait(0.5)
             TeleportService:Teleport(game.PlaceId, LocalPlayer)
         else
@@ -471,11 +507,7 @@ end
 
 -- [H] Server Hop (With Auto-Queue Script Execution)
 local function serverHop()
-    if queueTeleport then
-        pcall(function()
-            queueTeleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/..."))()]])
-        end)
-    end
+    queueScriptExecution()
     pcall(function()
         local req = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
         if req then
@@ -516,7 +548,6 @@ end
 
 -- [J] Destroy Everything (Settings)
 local function destroyEverything()
-    -- Restore humanoid states
     pcall(function()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then
@@ -525,16 +556,13 @@ local function destroyEverything()
         end
     end)
 
-    -- Unbind render steps
     pcall(function() RunService:UnbindFromRenderStep("SmoothShiftLockStep") end)
     pcall(function() RunService:UnbindFromRenderStep("PCCameraToggleStep") end)
 
-    -- Disconnect character added connection
     if charAddedConn then
         charAddedConn:Disconnect()
     end
 
-    -- Destroy UI
     if ScreenGui then
         ScreenGui:Destroy()
     end
@@ -559,7 +587,7 @@ createToggle(SettingsContent, "MuteGameToggle", "Mute Game", false, toggleMuteGa
 createButton(SettingsContent, "DestroyBtn", "Destroy Everything", Color3.fromRGB(130, 35, 35), destroyEverything, 2)
 
 ---------------------------------------------------------------------
--- 8. SLIDE-OUT / SLIDE-IN ANIMATION (No clipping, smooth motion)
+-- 8. SLIDE ANIMATION LOGIC
 ---------------------------------------------------------------------
 local isMenuOpen = false
 local slideTweenObj
@@ -573,13 +601,11 @@ Launcher.MouseButton1Click:Connect(function()
 
     if isMenuOpen then
         MenuPanel.Visible = true
-        -- Slide out to the left of the Launcher
         local targetPos = UDim2.new(1, -28, 0.4, 0)
         slideTweenObj = TweenService:Create(MenuPanel, slideTween, {Position = targetPos})
         slideTweenObj:Play()
         TweenService:Create(Launcher, slideTween, {BackgroundTransparency = 0.15}):Play()
     else
-        -- Slide back behind the launcher to the right
         local targetPos = UDim2.new(1, PANEL_WIDTH + 40, 0.4, 0)
         slideTweenObj = TweenService:Create(MenuPanel, slideTween, {Position = targetPos})
         slideTweenObj:Play()
