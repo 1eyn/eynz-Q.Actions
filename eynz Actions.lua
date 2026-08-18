@@ -8,32 +8,50 @@ local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local SoundService = game:GetService("SoundService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // Queue On Teleport Handler
+---------------------------------------------------------------------
+-- PERSISTENT AUTO-EXECUTION ENGINE (Rejoin / ServerHop)
+---------------------------------------------------------------------
 local queueTeleport = (syn and syn.queue_on_teleport) 
     or queue_on_teleport 
     or (fluxus and fluxus.queue_on_teleport) 
     or (queue_teleport)
 
-local function queueScriptExecution()
-    local reExecCode
+local function getSelfExecutionCode()
     if getgenv and getgenv().QoL_ScriptUrl then
-        reExecCode = string.format("loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
+        return string.format("loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
     elseif getgenv and getgenv().QoL_ScriptSource then
-        reExecCode = getgenv().QoL_ScriptSource
+        return getgenv().QoL_ScriptSource
     end
 
-    if queueTeleport and reExecCode then
+    -- Persistent auto-cache fallback
+    pcall(function()
+        if writefile and readfile then
+            if not isfile("MobileQoL_AutoExec.lua") or (getgenv and getgenv().MobileQoL_RawSource) then
+                if getgenv and getgenv().MobileQoL_RawSource then
+                    writefile("MobileQoL_AutoExec.lua", getgenv().MobileQoL_RawSource)
+                end
+            end
+        end
+    end)
+
+    return 'pcall(function() if readfile and isfile("MobileQoL_AutoExec.lua") then loadstring(readfile("MobileQoL_AutoExec.lua"))() end end)'
+end
+
+local function queueScriptExecution()
+    local code = getSelfExecutionCode()
+    if queueTeleport and code then
         pcall(function()
-            queueTeleport(reExecCode)
+            queueTeleport(code)
         end)
     end
 end
 
--- Hook into OnTeleport as a secondary safeguard
+-- Teleport state safeguard
 pcall(function()
     LocalPlayer.OnTeleport:Connect(function(state)
         if state == Enum.TeleportState.Started then
@@ -42,22 +60,22 @@ pcall(function()
     end)
 end)
 
--- Safe UI Container
+---------------------------------------------------------------------
+-- SAFE UI CONTAINER
+---------------------------------------------------------------------
 local ParentGui
 if gethui then
     ParentGui = gethui()
-elseif game:GetService("CoreGui") then
-    ParentGui = game:GetService("CoreGui")
+elseif CoreGui then
+    ParentGui = CoreGui
 else
     ParentGui = LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- Cleanup existing instances
 if ParentGui:FindFirstChild("MobileQoL_UI") then
     ParentGui.MobileQoL_UI:Destroy()
 end
 
--- // ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MobileQoL_UI"
 ScreenGui.ResetOnSpawn = false
@@ -111,7 +129,7 @@ LauncherText.ZIndex = 11
 LauncherText.Parent = Launcher
 
 ---------------------------------------------------------------------
--- 2. MAIN MENU PANEL (Slide-Out Container)
+-- 2. MAIN MENU PANEL
 ---------------------------------------------------------------------
 local PANEL_WIDTH = 185
 local PANEL_HEIGHT_SCALE = 0.5
@@ -135,7 +153,6 @@ MenuStroke.Transparency = 0.8
 MenuStroke.Thickness = 1
 MenuStroke.Parent = MenuPanel
 
--- Top Tab Navigation Bar
 local TabBar = Instance.new("Frame")
 TabBar.Name = "TabBar"
 TabBar.Size = UDim2.new(1, -12, 0, 26)
@@ -184,7 +201,6 @@ local SettingsCorner = Instance.new("UICorner")
 SettingsCorner.CornerRadius = UDim.new(0, 4)
 SettingsCorner.Parent = SettingsTabBtn
 
--- Tab Viewport / Pages Container
 local PagesHolder = Instance.new("Frame")
 PagesHolder.Name = "PagesHolder"
 PagesHolder.Size = UDim2.new(1, -12, 1, -40)
@@ -223,7 +239,7 @@ local SettingsContent = createScrollContainer("SettingsContent")
 SettingsContent.Visible = false
 
 ---------------------------------------------------------------------
--- 3. VISUAL HUD ELEMENTS (Crosshair & Shiftlock Indicator)
+-- 3. HUD ELEMENTS
 ---------------------------------------------------------------------
 local CROSSHAIR_Y = 0.45
 
@@ -265,7 +281,7 @@ ShiftLockCenterIcon.Visible = false
 ShiftLockCenterIcon.Parent = ScreenGui
 
 ---------------------------------------------------------------------
--- 4. UI BUILDERS (Buttons & Toggles)
+-- 4. UI BUILDERS
 ---------------------------------------------------------------------
 local function createButton(parent, name, text, color, callback, order)
     local btn = Instance.new("TextButton")
@@ -326,7 +342,7 @@ local function createToggle(parent, name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 5. TAB SWITCHING SYSTEM
+-- 5. TAB SWITCHING
 ---------------------------------------------------------------------
 local currentTab = "Actions"
 
@@ -355,13 +371,8 @@ local function switchTab(tabName)
     end
 end
 
-ActionsTabBtn.MouseButton1Click:Connect(function()
-    switchTab("Actions")
-end)
-
-SettingsTabBtn.MouseButton1Click:Connect(function()
-    switchTab("Settings")
-end)
+ActionsTabBtn.MouseButton1Click:Connect(function() switchTab("Actions") end)
+SettingsTabBtn.MouseButton1Click:Connect(function() switchTab("Settings") end)
 
 ---------------------------------------------------------------------
 -- 6. FEATURE LOGIC & IMPLEMENTATIONS
@@ -385,7 +396,7 @@ charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- [B] Shift Lock
+-- [B] Anti-Wobble Shift Lock
 local isShiftLock = false
 local shiftLockOffset = Vector3.new(1.75, 0.25, 0)
 local defaultOffset = Vector3.new(0, 0, 0)
@@ -402,15 +413,24 @@ local function toggleShiftLock(state)
     end
 end
 
-RunService:BindToRenderStep("SmoothShiftLockStep", Enum.RenderPriority.Character.Value + 1, function()
+-- High precision lock using Camera Render priority with exact LookVector projection
+RunService:BindToRenderStep("StableShiftLock", Enum.RenderPriority.Camera.Value - 1, function()
     if isShiftLock then
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
         if root and hum and hum.Health > 0 then
             hum.AutoRotate = false
-            local _, y = Camera.CFrame.Rotation:ToEulerAnglesYXZ()
-            root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, y, 0)
+            
+            -- Flatten lookVector on horizontal plane (removes tilt wobble completely)
+            local look = Camera.CFrame.LookVector
+            local flatLook = Vector3.new(look.X, 0, look.Z)
+            
+            if flatLook.Magnitude > 0.001 then
+                flatLook = flatLook.Unit
+                root.CFrame = CFrame.lookAt(root.Position, root.Position + flatLook)
+            end
         end
     end
 end)
@@ -441,25 +461,52 @@ RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Val
     end
 end)
 
--- [D] Quick Leaderboard Toggle (Fixed)
-local leaderboardOpenFallback = false
+-- [D] Mobile-Compatible Quick Leaderboard Toggle
+local leaderboardOpen = false
 local function toggleLeaderboard()
     pcall(function()
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
     end)
-    
+
+    -- Attempt 1: Direct CoreGui Mobile TopBar button trigger
+    local toggledViaButton = false
+    pcall(function()
+        local topBarApp = CoreGui:FindFirstChild("TopBarApp") or CoreGui:FindFirstChild("RobloxGui")
+        if topBarApp then
+            local leaderboardsButton = topBarApp:FindFirstChild("LeaderboardIcon", true)
+                or topBarApp:FindFirstChild("PlayerList", true)
+                or topBarApp:FindFirstChild("PlayerListMaster", true)
+            
+            if leaderboardsButton and leaderboardsButton:IsA("GuiButton") then
+                for _, conn in pairs(getconnections(leaderboardsButton.Activated)) do
+                    conn:Fire()
+                    toggledViaButton = true
+                end
+                if not toggledViaButton then
+                    for _, conn in pairs(getconnections(leaderboardsButton.MouseButton1Click)) do
+                        conn:Fire()
+                        toggledViaButton = true
+                    end
+                end
+            end
+        end
+    end)
+
+    if toggledViaButton then return end
+
+    -- Attempt 2: SetCore toggle with dynamic fallback
     local success, currentStatus = pcall(function()
         return StarterGui:GetCore("PlayerListIsOpen")
     end)
-    
+
     if success and typeof(currentStatus) == "boolean" then
         pcall(function()
             StarterGui:SetCore("PlayerListIsOpen", not currentStatus)
         end)
     else
-        leaderboardOpenFallback = not leaderboardOpenFallback
+        leaderboardOpen = not leaderboardOpen
         pcall(function()
-            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpenFallback)
+            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpen)
         end)
     end
 end
@@ -491,7 +538,7 @@ local function quickReset()
     end
 end
 
--- [G] Rejoin (With Auto-Queue Script Execution)
+-- [G] Rejoin (With Instant Script Queue)
 local function rejoinGame()
     queueScriptExecution()
     pcall(function()
@@ -505,7 +552,7 @@ local function rejoinGame()
     end)
 end
 
--- [H] Server Hop (With Auto-Queue Script Execution)
+-- [H] Server Hop (With Instant Script Queue)
 local function serverHop()
     queueScriptExecution()
     pcall(function()
@@ -523,13 +570,12 @@ local function serverHop()
                     end
                 end
             end
-        else
-            TeleportService:Teleport(game.PlaceId, LocalPlayer)
         end
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
     end)
 end
 
--- [I] Mute Game (Settings)
+-- [I] Mute Game
 local isMuted = false
 local function toggleMuteGame(state)
     isMuted = state
@@ -546,7 +592,7 @@ local function toggleMuteGame(state)
     end)
 end
 
--- [J] Destroy Everything (Settings)
+-- [J] Destroy Everything
 local function destroyEverything()
     pcall(function()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -556,7 +602,7 @@ local function destroyEverything()
         end
     end)
 
-    pcall(function() RunService:UnbindFromRenderStep("SmoothShiftLockStep") end)
+    pcall(function() RunService:UnbindFromRenderStep("StableShiftLock") end)
     pcall(function() RunService:UnbindFromRenderStep("PCCameraToggleStep") end)
 
     if charAddedConn then
