@@ -4,14 +4,18 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
+local SoundService = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Parent GUI safely
+-- // Queue On Teleport Helper
+local queueTeleport = (syn and syn.queue_on_teleport) or queue_on_teleport or (fluxus and fluxus.queue_on_teleport)
+
+-- Safe UI Container
 local ParentGui
 if gethui then
     ParentGui = gethui()
@@ -34,11 +38,12 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = ParentGui
 
--- // TWEEN SETTINGS
-local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+-- // TWEEN PRESETS
+local fastTween = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local slideTween = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
 ---------------------------------------------------------------------
--- 1. LAUNCHER (Squircle / Rounded on edge)
+-- 1. LAUNCHER BUTTON
 ---------------------------------------------------------------------
 local Launcher = Instance.new("TextButton")
 Launcher.Name = "Launcher"
@@ -50,6 +55,7 @@ Launcher.BackgroundTransparency = 0.35
 Launcher.BorderSizePixel = 0
 Launcher.Text = ""
 Launcher.AutoButtonColor = false
+Launcher.ZIndex = 10
 Launcher.Parent = ScreenGui
 
 local LauncherCorner = Instance.new("UICorner")
@@ -62,7 +68,6 @@ LauncherStroke.Transparency = 0.8
 LauncherStroke.Thickness = 1
 LauncherStroke.Parent = Launcher
 
--- Vertical "QUICK ACTIONS" Text
 local LauncherText = Instance.new("TextLabel")
 LauncherText.Name = "VerticalText"
 LauncherText.Size = UDim2.new(1, 0, 1, 0)
@@ -72,20 +77,27 @@ LauncherText.TextColor3 = Color3.fromRGB(255, 255, 255)
 LauncherText.TextSize = 10
 LauncherText.TextWrapped = true
 LauncherText.Text = "Q\nU\nI\nC\nK\n\nA\nC\nT\nI\nO\nN\nS"
+LauncherText.ZIndex = 11
 LauncherText.Parent = Launcher
 
 ---------------------------------------------------------------------
--- 2. MAIN MENU PANEL (Square & Grayish Blue)
+-- 2. MAIN MENU PANEL (Slide-Out Container)
 ---------------------------------------------------------------------
+local PANEL_WIDTH = 185
+local PANEL_HEIGHT_SCALE = 0.5
+
 local MenuPanel = Instance.new("Frame")
 MenuPanel.Name = "MenuPanel"
 MenuPanel.AnchorPoint = Vector2.new(1, 0.5)
-MenuPanel.Position = UDim2.new(1, 0, 0.4, 0)
-MenuPanel.Size = UDim2.new(0, 0, 0.5, 0)
-MenuPanel.BackgroundColor3 = Color3.fromRGB(32, 43, 56) -- Grayish Blue
-MenuPanel.BackgroundTransparency = 0.35
+-- Starts hidden off-screen to the right
+MenuPanel.Position = UDim2.new(1, PANEL_WIDTH + 40, 0.4, 0)
+MenuPanel.Size = UDim2.new(0, PANEL_WIDTH, PANEL_HEIGHT_SCALE, 0)
+MenuPanel.BackgroundColor3 = Color3.fromRGB(32, 43, 56)
+MenuPanel.BackgroundTransparency = 0.25
 MenuPanel.BorderSizePixel = 0
 MenuPanel.ClipsDescendants = true
+MenuPanel.Visible = false
+MenuPanel.ZIndex = 5
 MenuPanel.Parent = ScreenGui
 
 local MenuStroke = Instance.new("UIStroke")
@@ -94,41 +106,98 @@ MenuStroke.Transparency = 0.8
 MenuStroke.Thickness = 1
 MenuStroke.Parent = MenuPanel
 
-local ContentContainer = Instance.new("ScrollingFrame")
-ContentContainer.Name = "Content"
-ContentContainer.Size = UDim2.new(1, -12, 1, -16)
-ContentContainer.Position = UDim2.new(0, 8, 0, 8)
-ContentContainer.BackgroundTransparency = 1
-ContentContainer.BorderSizePixel = 0
-ContentContainer.ScrollBarThickness = 2
-ContentContainer.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
-ContentContainer.ScrollBarImageTransparency = 0.5
-ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-ContentContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
-ContentContainer.Parent = MenuPanel
+-- Top Tab Navigation Bar
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, -12, 0, 26)
+TabBar.Position = UDim2.new(0, 6, 0, 6)
+TabBar.BackgroundTransparency = 1
+TabBar.ZIndex = 6
+TabBar.Parent = MenuPanel
 
-local ListLayout = Instance.new("UIListLayout")
-ListLayout.Padding = UDim.new(0, 7)
-ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ListLayout.Parent = ContentContainer
+local TabListLayout = Instance.new("UIListLayout")
+TabListLayout.FillDirection = Enum.FillDirection.Horizontal
+TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabListLayout.Padding = UDim.new(0, 6)
+TabListLayout.Parent = TabBar
 
--- Title
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 24)
-Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.GothamBold
-Title.Text = "QUICK ACTIONS"
-Title.TextColor3 = Color3.fromRGB(240, 245, 255)
-Title.TextSize = 13
-Title.LayoutOrder = 0
-Title.Parent = ContentContainer
+local ActionsTabBtn = Instance.new("TextButton")
+ActionsTabBtn.Name = "ActionsTab"
+ActionsTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
+ActionsTabBtn.BackgroundColor3 = Color3.fromRGB(48, 62, 80)
+ActionsTabBtn.BackgroundTransparency = 0.2
+ActionsTabBtn.BorderSizePixel = 0
+ActionsTabBtn.Font = Enum.Font.GothamBold
+ActionsTabBtn.Text = "ACTIONS"
+ActionsTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ActionsTabBtn.TextSize = 10
+ActionsTabBtn.ZIndex = 7
+ActionsTabBtn.Parent = TabBar
+
+local SettingsTabBtn = Instance.new("TextButton")
+SettingsTabBtn.Name = "SettingsTab"
+SettingsTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
+SettingsTabBtn.BackgroundColor3 = Color3.fromRGB(24, 32, 42)
+SettingsTabBtn.BackgroundTransparency = 0.5
+SettingsTabBtn.BorderSizePixel = 0
+SettingsTabBtn.Font = Enum.Font.GothamBold
+SettingsTabBtn.Text = "SETTINGS"
+SettingsTabBtn.TextColor3 = Color3.fromRGB(170, 180, 195)
+SettingsTabBtn.TextSize = 10
+SettingsTabBtn.ZIndex = 7
+SettingsTabBtn.Parent = TabBar
+
+local ActionsCorner = Instance.new("UICorner")
+ActionsCorner.CornerRadius = UDim.new(0, 4)
+ActionsCorner.Parent = ActionsTabBtn
+
+local SettingsCorner = Instance.new("UICorner")
+SettingsCorner.CornerRadius = UDim.new(0, 4)
+SettingsCorner.Parent = SettingsTabBtn
+
+-- Tab Viewport / Pages Container
+local PagesHolder = Instance.new("Frame")
+PagesHolder.Name = "PagesHolder"
+PagesHolder.Size = UDim2.new(1, -12, 1, -40)
+PagesHolder.Position = UDim2.new(0, 6, 0, 36)
+PagesHolder.BackgroundTransparency = 1
+PagesHolder.ClipsDescendants = true
+PagesHolder.ZIndex = 6
+PagesHolder.Parent = MenuPanel
+
+local function createScrollContainer(name)
+    local container = Instance.new("ScrollingFrame")
+    container.Name = name
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.Position = UDim2.new(0, 0, 0, 0)
+    container.BackgroundTransparency = 1
+    container.BorderSizePixel = 0
+    container.ScrollBarThickness = 2
+    container.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+    container.ScrollBarImageTransparency = 0.5
+    container.CanvasSize = UDim2.new(0, 0, 0, 0)
+    container.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    container.ClipsDescendants = true
+    container.ZIndex = 7
+    container.Parent = PagesHolder
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = container
+
+    return container
+end
+
+local ActionsContent = createScrollContainer("ActionsContent")
+local SettingsContent = createScrollContainer("SettingsContent")
+SettingsContent.Visible = false
 
 ---------------------------------------------------------------------
--- 3. CROSSHAIR, TOUCH POINTER & SHIFTLOCK CENTER ICON (Lowered)
+-- 3. VISUAL HUD ELEMENTS (Crosshair & Shiftlock Indicator)
 ---------------------------------------------------------------------
-local CROSSHAIR_Y = 0.45 -- Tiny bit lower than 0.42
+local CROSSHAIR_Y = 0.45
 
--- Camera Toggle Crosshair
 local Crosshair = Instance.new("Frame")
 Crosshair.Name = "Crosshair"
 Crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -156,22 +225,6 @@ CrossV.BackgroundTransparency = 0.2
 CrossV.BorderSizePixel = 0
 CrossV.Parent = Crosshair
 
--- Touch Pointer Dot
-local TouchPointer = Instance.new("Frame")
-TouchPointer.Name = "TouchPointer"
-TouchPointer.AnchorPoint = Vector2.new(0.5, 0.5)
-TouchPointer.Position = UDim2.new(0.5, 0, CROSSHAIR_Y, 0)
-TouchPointer.Size = UDim2.new(0, 6, 0, 6)
-TouchPointer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-TouchPointer.BorderSizePixel = 0
-TouchPointer.Visible = false
-TouchPointer.Parent = ScreenGui
-
-local PointerCorner = Instance.new("UICorner")
-PointerCorner.CornerRadius = UDim.new(1, 0)
-PointerCorner.Parent = TouchPointer
-
--- Shift Lock Center Icon (appears in middle of screen when Shift Lock is ON)
 local ShiftLockCenterIcon = Instance.new("ImageLabel")
 ShiftLockCenterIcon.Name = "ShiftLockCenterIcon"
 ShiftLockCenterIcon.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -183,12 +236,12 @@ ShiftLockCenterIcon.Visible = false
 ShiftLockCenterIcon.Parent = ScreenGui
 
 ---------------------------------------------------------------------
--- 4. BUTTON CREATION HELPERS (Square)
+-- 4. UI BUILDERS (Buttons & Toggles)
 ---------------------------------------------------------------------
-local function createButton(name, text, color, callback, order)
+local function createButton(parent, name, text, color, callback, order)
     local btn = Instance.new("TextButton")
     btn.Name = name
-    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.Size = UDim2.new(1, 0, 0, 30)
     btn.BackgroundColor3 = color or Color3.fromRGB(48, 62, 80)
     btn.BackgroundTransparency = 0.35
     btn.BorderSizePixel = 0
@@ -198,18 +251,19 @@ local function createButton(name, text, color, callback, order)
     btn.TextSize = 11
     btn.AutoButtonColor = true
     btn.LayoutOrder = order or 1
-    btn.Parent = ContentContainer
+    btn.ZIndex = 8
+    btn.Parent = parent
 
     btn.MouseButton1Click:Connect(callback)
     return btn
 end
 
-local function createToggle(name, text, defaultState, callback, order)
+local function createToggle(parent, name, text, defaultState, callback, order)
     local state = defaultState or false
     
     local btn = Instance.new("TextButton")
     btn.Name = name
-    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.Size = UDim2.new(1, 0, 0, 30)
     btn.BackgroundColor3 = state and Color3.fromRGB(38, 92, 90) or Color3.fromRGB(48, 62, 80)
     btn.BackgroundTransparency = 0.35
     btn.BorderSizePixel = 0
@@ -219,7 +273,8 @@ local function createToggle(name, text, defaultState, callback, order)
     btn.TextSize = 11
     btn.AutoButtonColor = true
     btn.LayoutOrder = order or 1
-    btn.Parent = ContentContainer
+    btn.ZIndex = 8
+    btn.Parent = parent
 
     local function updateVisuals()
         btn.Text = text .. ": " .. (state and "ON" or "OFF")
@@ -242,7 +297,47 @@ local function createToggle(name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 5. FEATURE LOGIC
+-- 5. TAB SWITCHING SYSTEM (Snappy & Fast)
+---------------------------------------------------------------------
+local currentTab = "Actions"
+
+local function switchTab(tabName)
+    if currentTab == tabName then return end
+    currentTab = tabName
+
+    if tabName == "Actions" then
+        -- Fast button visual switch
+        TweenService:Create(ActionsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(48, 62, 80), BackgroundTransparency = 0.2}):Play()
+        ActionsTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        
+        TweenService:Create(SettingsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(24, 32, 42), BackgroundTransparency = 0.5}):Play()
+        SettingsTabBtn.TextColor3 = Color3.fromRGB(170, 180, 195)
+
+        -- Snappy view swap
+        SettingsContent.Visible = false
+        ActionsContent.Visible = true
+    else
+        TweenService:Create(SettingsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(48, 62, 80), BackgroundTransparency = 0.2}):Play()
+        SettingsTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        
+        TweenService:Create(ActionsTabBtn, fastTween, {BackgroundColor3 = Color3.fromRGB(24, 32, 42), BackgroundTransparency = 0.5}):Play()
+        ActionsTabBtn.TextColor3 = Color3.fromRGB(170, 180, 195)
+
+        ActionsContent.Visible = false
+        SettingsContent.Visible = true
+    end
+end
+
+ActionsTabBtn.MouseButton1Click:Connect(function()
+    switchTab("Actions")
+end)
+
+SettingsTabBtn.MouseButton1Click:Connect(function()
+    switchTab("Settings")
+end)
+
+---------------------------------------------------------------------
+-- 6. FEATURE LOGIC & IMPLEMENTATIONS
 ---------------------------------------------------------------------
 
 -- [A] Auto Jump Logic
@@ -255,14 +350,15 @@ local function setAutoJump(val)
     end
 end
 
-LocalPlayer.CharacterAdded:Connect(function(char)
+local charAddedConn
+charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid", 6)
     if hum then
         hum.AutoJumpEnabled = autoJumpEnabled
     end
 end)
 
--- [B] Shift Lock Logic (Smooth Character Stepped rotation + Center Icon)
+-- [B] Super Smooth & Stable Shift Lock
 local isShiftLock = false
 local shiftLockOffset = Vector3.new(1.75, 0.25, 0)
 local defaultOffset = Vector3.new(0, 0, 0)
@@ -271,27 +367,29 @@ local function toggleShiftLock(state)
     isShiftLock = state
     ShiftLockCenterIcon.Visible = state
 
-    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum then
         hum.CameraOffset = state and shiftLockOffset or defaultOffset
         hum.AutoRotate = not state
     end
 end
 
--- Smooth character alignment with zero physics jitter
-RunService:BindToRenderStep("SmoothShiftLockStep", Enum.RenderPriority.Character.Value, function()
+-- Aligns player angle directly with Camera Y rotation seamlessly
+RunService:BindToRenderStep("SmoothShiftLockStep", Enum.RenderPriority.Character.Value + 1, function()
     if isShiftLock then
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if root and hum and hum.Health > 0 then
+            hum.AutoRotate = false
             local _, y = Camera.CFrame.Rotation:ToEulerAnglesYXZ()
             root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, y, 0)
         end
     end
 end)
 
--- [C] Camera Toggle Logic (PC-Style: Fixed to Right Shoulder, No Wobble)
+-- [C] Camera Toggle Logic
 local isCameraToggle = false
 local camOffsetLerp = 0
 local TARGET_CAM_OFFSET = Vector3.new(1.75, 0.25, 0)
@@ -300,7 +398,6 @@ local function toggleCameraMode(state)
     isCameraToggle = state
     Crosshair.Visible = state
     
-    -- Ensure humanoid's internal offset is clean so it doesn't rotate with character
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum and not isShiftLock then
         hum.CameraOffset = defaultOffset
@@ -308,7 +405,6 @@ local function toggleCameraMode(state)
     end
 end
 
--- Apply camera offset relative to camera view angle (prevents all movement wobble)
 RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Value + 1, function(dt)
     local targetVal = isCameraToggle and 1 or 0
     camOffsetLerp = camOffsetLerp + (targetVal - camOffsetLerp) * math.clamp(dt * 14, 0, 1)
@@ -319,25 +415,16 @@ RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Val
     end
 end)
 
--- [D] Touch Pointer (Hover Simulator for Mobile)
-local isTouchPointer = false
-local function toggleTouchPointer(state)
-    isTouchPointer = state
-    TouchPointer.Visible = state
+-- [D] Quick Leaderboard Toggle
+local leaderboardVisible = true
+local function toggleLeaderboard()
+    leaderboardVisible = not leaderboardVisible
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, leaderboardVisible)
+    end)
 end
 
--- Continuously simulates mouse movement on the exact pointer screen coordinates
-RunService.RenderStepped:Connect(function()
-    if isTouchPointer then
-        local inset = GuiService:GetGuiInset()
-        local pos = TouchPointer.AbsolutePosition + (TouchPointer.AbsoluteSize / 2) + inset
-        pcall(function()
-            VirtualInputManager:SendMouseMoveEvent(pos.X, pos.Y, game)
-        end)
-    end
-end)
-
--- [E] Performance Stats (Fixed Multi-Method Toggle)
+-- [E] Performance Stats
 local function togglePerfStats()
     local success = pcall(function()
         local ugs = UserSettings():GetService("UserGameSettings")
@@ -351,7 +438,7 @@ local function togglePerfStats()
     end
 end
 
--- [F] Reset
+-- [F] Quick Reset
 local function quickReset()
     local char = LocalPlayer.Character
     if char then
@@ -364,8 +451,13 @@ local function quickReset()
     end
 end
 
--- [G] Rejoin
+-- [G] Rejoin (With Auto-Queue Script Execution)
 local function rejoinGame()
+    if queueTeleport then
+        pcall(function()
+            queueTeleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/..."))()]]) -- Or your loader if using external URL
+        end)
+    end
     pcall(function()
         if #Players:GetPlayers() <= 1 then
             LocalPlayer:Kick("\n[QoL] Rejoining...")
@@ -377,8 +469,13 @@ local function rejoinGame()
     end)
 end
 
--- [H] Server Hop
+-- [H] Server Hop (With Auto-Queue Script Execution)
 local function serverHop()
+    if queueTeleport then
+        pcall(function()
+            queueTeleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/..."))()]])
+        end)
+    end
     pcall(function()
         local req = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
         if req then
@@ -400,38 +497,98 @@ local function serverHop()
     end)
 end
 
----------------------------------------------------------------------
--- 6. POPULATE UI BUTTONS
----------------------------------------------------------------------
-createToggle("AutoJumpToggle", "Auto Jump", true, setAutoJump, 1)
-createToggle("ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
-createToggle("CamToggle", "Camera Toggle", false, toggleCameraMode, 3)
-createToggle("TouchPointerToggle", "Touch Pointer", false, toggleTouchPointer, 4)
-createButton("PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 5)
-createButton("ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 6)
-createButton("RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 7)
-createButton("HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 8)
+-- [I] Mute Game (Settings)
+local isMuted = false
+local function toggleMuteGame(state)
+    isMuted = state
+    pcall(function()
+        local ugs = UserSettings():GetService("UserGameSettings")
+        ugs.MasterVolume = isMuted and 0 or 1
+    end)
+    pcall(function()
+        local gs = settings():GetService("GameSettings")
+        gs.MasterVolume = isMuted and 0 or 1
+    end)
+    pcall(function()
+        SoundService.Volume = isMuted and 0 or 1
+    end)
+end
+
+-- [J] Destroy Everything (Settings)
+local function destroyEverything()
+    -- Restore humanoid states
+    pcall(function()
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.CameraOffset = defaultOffset
+            hum.AutoRotate = true
+        end
+    end)
+
+    -- Unbind render steps
+    pcall(function() RunService:UnbindFromRenderStep("SmoothShiftLockStep") end)
+    pcall(function() RunService:UnbindFromRenderStep("PCCameraToggleStep") end)
+
+    -- Disconnect character added connection
+    if charAddedConn then
+        charAddedConn:Disconnect()
+    end
+
+    -- Destroy UI
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
+end
 
 ---------------------------------------------------------------------
--- 7. MENU EXPAND / COLLAPSE ANIMATION
+-- 7. POPULATE BUTTONS
+---------------------------------------------------------------------
+
+-- Actions Tab
+createToggle(ActionsContent, "AutoJumpToggle", "Auto Jump", true, setAutoJump, 1)
+createToggle(ActionsContent, "ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
+createToggle(ActionsContent, "CamToggle", "Camera Toggle", false, toggleCameraMode, 3)
+createButton(ActionsContent, "LeaderboardBtn", "Quick Leaderboard", Color3.fromRGB(48, 62, 80), toggleLeaderboard, 4)
+createButton(ActionsContent, "PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 5)
+createButton(ActionsContent, "ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 6)
+createButton(ActionsContent, "RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 7)
+createButton(ActionsContent, "HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 8)
+
+-- Settings Tab
+createToggle(SettingsContent, "MuteGameToggle", "Mute Game", false, toggleMuteGame, 1)
+createButton(SettingsContent, "DestroyBtn", "Destroy Everything", Color3.fromRGB(130, 35, 35), destroyEverything, 2)
+
+---------------------------------------------------------------------
+-- 8. SLIDE-OUT / SLIDE-IN ANIMATION (No clipping, smooth motion)
 ---------------------------------------------------------------------
 local isMenuOpen = false
-local panelWidth = 180
+local slideTweenObj
 
 Launcher.MouseButton1Click:Connect(function()
     isMenuOpen = not isMenuOpen
     
+    if slideTweenObj then
+        slideTweenObj:Cancel()
+    end
+
     if isMenuOpen then
-        local targetSize = UDim2.new(0, panelWidth, 0.5, 0)
+        MenuPanel.Visible = true
+        -- Slide out to the left of the Launcher
         local targetPos = UDim2.new(1, -28, 0.4, 0)
-        
-        TweenService:Create(MenuPanel, tweenInfo, {Size = targetSize, Position = targetPos}):Play()
-        TweenService:Create(Launcher, tweenInfo, {BackgroundTransparency = 0.15}):Play()
+        slideTweenObj = TweenService:Create(MenuPanel, slideTween, {Position = targetPos})
+        slideTweenObj:Play()
+        TweenService:Create(Launcher, slideTween, {BackgroundTransparency = 0.15}):Play()
     else
-        local targetSize = UDim2.new(0, 0, 0.5, 0)
-        local targetPos = UDim2.new(1, 0, 0.4, 0)
+        -- Slide back behind the launcher to the right
+        local targetPos = UDim2.new(1, PANEL_WIDTH + 40, 0.4, 0)
+        slideTweenObj = TweenService:Create(MenuPanel, slideTween, {Position = targetPos})
+        slideTweenObj:Play()
+        TweenService:Create(Launcher, slideTween, {BackgroundTransparency = 0.35}):Play()
         
-        TweenService:Create(MenuPanel, tweenInfo, {Size = targetSize, Position = targetPos}):Play()
-        TweenService:Create(Launcher, tweenInfo, {BackgroundTransparency = 0.35}):Play()
+        slideTweenObj.Completed:Connect(function()
+            if not isMenuOpen then
+                MenuPanel.Visible = false
+            end
+        end)
     end
 end)
