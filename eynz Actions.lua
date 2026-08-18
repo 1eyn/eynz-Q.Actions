@@ -3,72 +3,14 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
-local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
-local GuiService = game:GetService("GuiService")
 local SoundService = game:GetService("SoundService")
 local CoreGui = game:GetService("CoreGui")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local StatsService = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-
----------------------------------------------------------------------
--- PERSISTENT AUTO-EXECUTION ENGINE (Rejoin / ServerHop)
----------------------------------------------------------------------
-local queueTeleport = (syn and syn.queue_on_teleport) 
-    or queue_on_teleport 
-    or queueonteleport 
-    or (fluxus and fluxus.queue_on_teleport) 
-    or (queue_teleport)
-    or (getgenv and (getgenv().queue_on_teleport or getgenv().queueonteleport))
-
-local function getSelfExecutionCode()
-    if getgenv and getgenv().QoL_ScriptUrl and getgenv().QoL_ScriptUrl ~= "" then
-        return string.format("task.wait(1.5); loadstring(game:HttpGet(%q))()", getgenv().QoL_ScriptUrl)
-    elseif getgenv and getgenv().QoL_ScriptSource and getgenv().QoL_ScriptSource ~= "" then
-        return string.format("task.wait(1.5); %s", getgenv().QoL_ScriptSource)
-    end
-
-    -- Persistent auto-cache fallback
-    pcall(function()
-        if writefile and readfile then
-            if getgenv and getgenv().MobileQoL_RawSource then
-                writefile("MobileQoL_AutoExec.lua", getgenv().MobileQoL_RawSource)
-            end
-        end
-    end)
-
-    return [[
-        task.spawn(function()
-            task.wait(1.5)
-            if getgenv and getgenv().QoL_ScriptUrl then
-                pcall(function() loadstring(game:HttpGet(getgenv().QoL_ScriptUrl))() end)
-            elseif isfile and readfile and isfile("MobileQoL_AutoExec.lua") then
-                pcall(function() loadstring(readfile("MobileQoL_AutoExec.lua"))() end)
-            end
-        end)
-    ]]
-end
-
-local function queueScriptExecution()
-    if queueTeleport then
-        local code = getSelfExecutionCode()
-        if code then
-            pcall(function()
-                queueTeleport(code)
-            end)
-        end
-    end
-end
-
--- Teleport state safeguard
-pcall(function()
-    LocalPlayer.OnTeleport:Connect(function(state)
-        queueScriptExecution()
-    end)
-end)
 
 ---------------------------------------------------------------------
 -- SAFE UI CONTAINER
@@ -133,7 +75,7 @@ LauncherText.BackgroundTransparency = 1
 LauncherText.Font = Enum.Font.GothamBold
 LauncherText.TextColor3 = Color3.fromRGB(255, 255, 255)
 LauncherText.TextSize = 11
-LauncherText.Text = "eynz Actions"
+LauncherText.Text = "eynz    Actions"
 LauncherText.Rotation = 90
 LauncherText.ZIndex = 11
 LauncherText.Parent = Launcher
@@ -211,9 +153,10 @@ local SettingsCorner = Instance.new("UICorner")
 SettingsCorner.CornerRadius = UDim.new(0, 4)
 SettingsCorner.Parent = SettingsTabBtn
 
+-- Pages Holder (Offset adjusted to make room for fixed bottom stats bar)
 local PagesHolder = Instance.new("Frame")
 PagesHolder.Name = "PagesHolder"
-PagesHolder.Size = UDim2.new(1, -12, 1, -40)
+PagesHolder.Size = UDim2.new(1, -12, 1, -64)
 PagesHolder.Position = UDim2.new(0, 6, 0, 36)
 PagesHolder.BackgroundTransparency = 1
 PagesHolder.ClipsDescendants = true
@@ -249,7 +192,91 @@ local SettingsContent = createScrollContainer("SettingsContent")
 SettingsContent.Visible = false
 
 ---------------------------------------------------------------------
--- 3. HUD ELEMENTS
+-- 3. FIXED BOTTOM STATUS BAR (FPS, PING & CREDITS)
+---------------------------------------------------------------------
+local BottomBar = Instance.new("Frame")
+BottomBar.Name = "BottomStatusBar"
+BottomBar.Position = UDim2.new(0, 6, 1, -24)
+BottomBar.Size = UDim2.new(1, -12, 0, 18)
+BottomBar.BackgroundColor3 = Color3.fromRGB(24, 34, 46)
+BottomBar.BackgroundTransparency = 0.35
+BottomBar.BorderSizePixel = 0
+BottomBar.ZIndex = 7
+BottomBar.Parent = MenuPanel
+
+local BottomBarCorner = Instance.new("UICorner")
+BottomBarCorner.CornerRadius = UDim.new(0, 4)
+BottomBarCorner.Parent = BottomBar
+
+local BottomBarStroke = Instance.new("UIStroke")
+BottomBarStroke.Color = Color3.fromRGB(180, 205, 230)
+BottomBarStroke.Transparency = 0.85
+BottomBarStroke.Thickness = 1
+BottomBarStroke.Parent = BottomBar
+
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Name = "StatsLabel"
+StatsLabel.Position = UDim2.new(0, 5, 0, 0)
+StatsLabel.Size = UDim2.new(0.6, 0, 1, 0)
+StatsLabel.BackgroundTransparency = 1
+StatsLabel.Font = Enum.Font.GothamMedium
+StatsLabel.TextSize = 9
+StatsLabel.TextColor3 = Color3.fromRGB(185, 205, 225)
+StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatsLabel.Text = "FPS: -- | Ping: --ms"
+StatsLabel.ZIndex = 8
+StatsLabel.Parent = BottomBar
+
+local CreditLabel = Instance.new("TextLabel")
+CreditLabel.Name = "CreditLabel"
+CreditLabel.Position = UDim2.new(0.6, 0, 0, 0)
+CreditLabel.Size = UDim2.new(0.4, -5, 1, 0)
+CreditLabel.BackgroundTransparency = 1
+CreditLabel.Font = Enum.Font.GothamBold
+CreditLabel.TextSize = 9
+CreditLabel.TextColor3 = Color3.fromRGB(130, 155, 175)
+CreditLabel.TextXAlignment = Enum.TextXAlignment.Right
+CreditLabel.Text = "by 1eyn"
+CreditLabel.ZIndex = 8
+CreditLabel.Parent = BottomBar
+
+-- Live Performance Tracker
+local frameCount = 0
+local fpsTimer = 0
+
+local perfConnection
+perfConnection = RunService.RenderStepped:Connect(function(dt)
+    frameCount = frameCount + 1
+    fpsTimer = fpsTimer + dt
+
+    if fpsTimer >= 0.5 then
+        local currentFPS = math.round(frameCount / fpsTimer)
+        local currentPing = 0
+
+        pcall(function()
+            if LocalPlayer and LocalPlayer.GetNetworkPing then
+                currentPing = math.round(LocalPlayer:GetNetworkPing() * 1000)
+            end
+        end)
+
+        if currentPing <= 0 then
+            pcall(function()
+                local item = StatsService.Network.ServerStatsItem:FindFirstChild("Data Ping")
+                if item then
+                    currentPing = math.round(item:GetValue())
+                end
+            end)
+        end
+
+        StatsLabel.Text = string.format("FPS: %d | Ping: %dms", currentFPS, currentPing)
+        
+        frameCount = 0
+        fpsTimer = 0
+    end
+end)
+
+---------------------------------------------------------------------
+-- 4. HUD ELEMENTS
 ---------------------------------------------------------------------
 local CROSSHAIR_Y = 0.45
 
@@ -291,7 +318,7 @@ ShiftLockCenterIcon.Visible = false
 ShiftLockCenterIcon.Parent = ScreenGui
 
 ---------------------------------------------------------------------
--- 4. UI BUILDERS
+-- 5. UI BUILDERS
 ---------------------------------------------------------------------
 local function createButton(parent, name, text, color, callback, order)
     local btn = Instance.new("TextButton")
@@ -352,7 +379,7 @@ local function createToggle(parent, name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 5. TAB SWITCHING
+-- 6. TAB SWITCHING
 ---------------------------------------------------------------------
 local currentTab = "Actions"
 
@@ -385,7 +412,7 @@ ActionsTabBtn.MouseButton1Click:Connect(function() switchTab("Actions") end)
 SettingsTabBtn.MouseButton1Click:Connect(function() switchTab("Settings") end)
 
 ---------------------------------------------------------------------
--- 6. FEATURE LOGIC & IMPLEMENTATIONS
+-- 7. FEATURE LOGIC & IMPLEMENTATIONS
 ---------------------------------------------------------------------
 
 -- [A] Auto Jump Logic
@@ -415,7 +442,6 @@ local function toggleShiftLock(state)
     end
 end
 
--- Bound to Enum.RenderPriority.Character (runs AFTER Camera calculation for 0-frame delay/zero lag)
 RunService:BindToRenderStep("StableShiftLock", Enum.RenderPriority.Character.Value, function()
     if isShiftLock then
         local char = LocalPlayer.Character
@@ -473,54 +499,7 @@ RunService:BindToRenderStep("PCCameraToggleStep", Enum.RenderPriority.Camera.Val
     end
 end)
 
--- [D] Multi-Method Quick Leaderboard Toggle
-local leaderboardOpen = false
-local function toggleLeaderboard()
-    pcall(function()
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
-    end)
-
-    -- Method 1: Virtual Keypress (Universal mobile/desktop CoreScript toggle)
-    task.spawn(function()
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Tab, false, game)
-            task.wait(0.02)
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Tab, false, game)
-        end)
-    end)
-
-    -- Method 2: SetCore Toggle Fallback
-    pcall(function()
-        local success, isOpen = pcall(function()
-            return StarterGui:GetCore("PlayerListIsOpen")
-        end)
-        if success and typeof(isOpen) == "boolean" then
-            StarterGui:SetCore("PlayerListIsOpen", not isOpen)
-        else
-            leaderboardOpen = not leaderboardOpen
-            StarterGui:SetCore("PlayerListIsOpen", leaderboardOpen)
-        end
-    end)
-
-    -- Method 3: Mobile Chrome / TopBar Button Connections
-    pcall(function()
-        local topBarApp = CoreGui:FindFirstChild("TopBarApp") or CoreGui:FindFirstChild("RobloxGui")
-        if topBarApp then
-            local targets = {"LeaderboardIcon", "PlayerList", "PlayerListMaster", "ChromeLeaderboard", "UnibarLeaderboard", "PlayerListBtn"}
-            for _, name in ipairs(targets) do
-                local btn = topBarApp:FindFirstChild(name, true)
-                if btn and (btn:IsA("GuiButton") or btn:IsA("ImageButton") or btn:IsA("TextButton")) then
-                    if getconnections then
-                        for _, conn in pairs(getconnections(btn.Activated)) do conn:Fire() end
-                        for _, conn in pairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- [E] Performance Stats
+-- [D] Performance Stats
 local function togglePerfStats()
     local success = pcall(function()
         local ugs = UserSettings():GetService("UserGameSettings")
@@ -534,7 +513,7 @@ local function togglePerfStats()
     end
 end
 
--- [F] Quick Reset
+-- [E] Quick Reset
 local function quickReset()
     local char = LocalPlayer.Character
     if char then
@@ -547,9 +526,8 @@ local function quickReset()
     end
 end
 
--- [G] Rejoin (With Reliable Instant Queue)
+-- [F] Rejoin
 local function rejoinGame()
-    queueScriptExecution()
     task.wait(0.1)
     pcall(function()
         if #Players:GetPlayers() <= 1 then
@@ -560,9 +538,8 @@ local function rejoinGame()
     end)
 end
 
--- [H] Server Hop (With Reliable Instant Queue)
+-- [G] Server Hop
 local function serverHop()
-    queueScriptExecution()
     task.wait(0.1)
     pcall(function()
         local req = (syn and syn.request) or (http and http.request) or http_request or request or (fluxus and fluxus.request)
@@ -586,7 +563,7 @@ local function serverHop()
     end)
 end
 
--- [I] Mute Game
+-- [H] Mute Game
 local isMuted = false
 local function toggleMuteGame(state)
     isMuted = state
@@ -603,7 +580,7 @@ local function toggleMuteGame(state)
     end)
 end
 
--- [J] Destroy Everything
+-- [I] Destroy Everything
 local function destroyEverything()
     pcall(function()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -616,6 +593,10 @@ local function destroyEverything()
     pcall(function() RunService:UnbindFromRenderStep("StableShiftLock") end)
     pcall(function() RunService:UnbindFromRenderStep("PCCameraToggleStep") end)
 
+    if perfConnection then
+        perfConnection:Disconnect()
+    end
+
     if charAddedConn then
         charAddedConn:Disconnect()
     end
@@ -626,25 +607,24 @@ local function destroyEverything()
 end
 
 ---------------------------------------------------------------------
--- 7. POPULATE BUTTONS
+-- 8. POPULATE BUTTONS
 ---------------------------------------------------------------------
 
 -- Actions Tab
 createToggle(ActionsContent, "AutoJumpToggle", "Auto Jump", true, setAutoJump, 1)
 createToggle(ActionsContent, "ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
 createToggle(ActionsContent, "CamToggle", "Camera Toggle", false, toggleCameraMode, 3)
-createButton(ActionsContent, "LeaderboardBtn", "Quick Leaderboard", Color3.fromRGB(48, 62, 80), toggleLeaderboard, 4)
-createButton(ActionsContent, "PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 5)
-createButton(ActionsContent, "ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 6)
-createButton(ActionsContent, "RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 7)
-createButton(ActionsContent, "HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 8)
+createButton(ActionsContent, "PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 4)
+createButton(ActionsContent, "ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 5)
+createButton(ActionsContent, "RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 6)
+createButton(ActionsContent, "HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 7)
 
 -- Settings Tab
 createToggle(SettingsContent, "MuteGameToggle", "Mute Game", false, toggleMuteGame, 1)
 createButton(SettingsContent, "DestroyBtn", "Destroy Everything", Color3.fromRGB(130, 35, 35), destroyEverything, 2)
 
 ---------------------------------------------------------------------
--- 8. SLIDE ANIMATION LOGIC
+-- 9. SLIDE ANIMATION LOGIC
 ---------------------------------------------------------------------
 local isMenuOpen = false
 local slideTweenObj
