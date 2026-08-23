@@ -38,6 +38,8 @@ ScreenGui.Parent = ParentGui
 -- // TWEEN PRESETS
 local fastTween = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local slideTween = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local wheelOpenTween = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local wheelCloseTween = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 ---------------------------------------------------------------------
 -- 1. LAUNCHER BUTTON
@@ -153,7 +155,7 @@ local SettingsCorner = Instance.new("UICorner")
 SettingsCorner.CornerRadius = UDim.new(0, 4)
 SettingsCorner.Parent = SettingsTabBtn
 
--- Pages Holder (Offset adjusted to make room for fixed bottom stats bar)
+-- Pages Holder
 local PagesHolder = Instance.new("Frame")
 PagesHolder.Name = "PagesHolder"
 PagesHolder.Size = UDim2.new(1, -12, 1, -64)
@@ -240,7 +242,6 @@ CreditLabel.Text = "by 1eyn"
 CreditLabel.ZIndex = 8
 CreditLabel.Parent = BottomBar
 
--- Live Performance Tracker
 local frameCount = 0
 local fpsTimer = 0
 
@@ -318,7 +319,207 @@ ShiftLockCenterIcon.Visible = false
 ShiftLockCenterIcon.Parent = ScreenGui
 
 ---------------------------------------------------------------------
--- 5. UI BUILDERS
+-- 5. EMOTE WHEEL SYSTEM (R6 & R15 COMPATIBLE)
+---------------------------------------------------------------------
+local EMOTE_DATA = {
+    { name = "Dance 1", key = "dance1", icon = "🕺", r6 = "rbxassetid://182435998", r15 = "rbxassetid://507771019", loop = true },
+    { name = "Dance 2", key = "dance2", icon = "💃", r6 = "rbxassetid://182436842", r15 = "rbxassetid://507776043", loop = true },
+    { name = "Dance 3", key = "dance3", icon = "✨", r6 = "rbxassetid://182436935", r15 = "rbxassetid://507777268", loop = true },
+    { name = "Point",   key = "point",  icon = "👉", r6 = "rbxassetid://128853357", r15 = "rbxassetid://507770453", loop = false },
+    { name = "Sit",     key = "sit",    icon = "🪑", r6 = nil,                   r15 = nil,                   loop = false },
+    { name = "Laugh",   key = "laugh",  icon = "😂", r6 = "rbxassetid://129423131", r15 = "rbxassetid://507770818", loop = false },
+    { name = "Cheer",   key = "cheer",  icon = "🎉", r6 = "rbxassetid://180611870", r15 = "rbxassetid://507770677", loop = false },
+    { name = "Wave",    key = "wave",   icon = "👋", r6 = "rbxassetid://128777973", r15 = "rbxassetid://507770239", loop = false },
+}
+
+local currentEmoteTrack = nil
+local emoteMoveConn = nil
+
+local function stopCurrentEmote()
+    if emoteMoveConn then
+        emoteMoveConn:Disconnect()
+        emoteMoveConn = nil
+    end
+    if currentEmoteTrack then
+        pcall(function()
+            currentEmoteTrack:Stop(0.18)
+            currentEmoteTrack:Destroy()
+        end)
+        currentEmoteTrack = nil
+    end
+end
+
+local function executeEmote(data)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+
+    stopCurrentEmote()
+
+    -- Custom Sit Action
+    if data.key == "sit" then
+        hum.Sit = true
+        return
+    end
+
+    local isR15 = (hum.RigType == Enum.RigType.R15)
+    local animId = isR15 and data.r15 or data.r6
+
+    if animId then
+        local animObj = Instance.new("Animation")
+        animObj.AnimationId = animId
+
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = hum
+        end
+
+        local track = animator:LoadAnimation(animObj)
+        track.Priority = Enum.AnimationPriority.Action
+        track.Looped = data.loop
+        track:Play(0.15)
+        currentEmoteTrack = track
+
+        -- Cancel emote on walk/jump
+        emoteMoveConn = hum.Running:Connect(function(speed)
+            if speed > 0.5 then
+                stopCurrentEmote()
+            end
+        end)
+    end
+end
+
+-- Emote Wheel UI Elements
+local EmoteWheelGui = Instance.new("Frame")
+EmoteWheelGui.Name = "EmoteWheel"
+EmoteWheelGui.AnchorPoint = Vector2.new(0.5, 0.5)
+EmoteWheelGui.Position = UDim2.new(0.5, 0, 0.5, 0)
+EmoteWheelGui.Size = UDim2.new(0, 260, 0, 260)
+EmoteWheelGui.BackgroundTransparency = 1
+EmoteWheelGui.Visible = false
+EmoteWheelGui.ZIndex = 20
+EmoteWheelGui.Parent = ScreenGui
+
+local WheelBackground = Instance.new("Frame")
+WheelBackground.Name = "WheelBackground"
+WheelBackground.AnchorPoint = Vector2.new(0.5, 0.5)
+WheelBackground.Position = UDim2.new(0.5, 0, 0.5, 0)
+WheelBackground.Size = UDim2.new(0, 250, 0, 250)
+WheelBackground.BackgroundColor3 = Color3.fromRGB(24, 32, 44)
+WheelBackground.BackgroundTransparency = 0.35
+WheelBackground.BorderSizePixel = 0
+WheelBackground.ZIndex = 20
+WheelBackground.Parent = EmoteWheelGui
+
+local WheelBgCorner = Instance.new("UICorner")
+WheelBgCorner.CornerRadius = UDim.new(1, 0)
+WheelBgCorner.Parent = WheelBackground
+
+local WheelBgStroke = Instance.new("UIStroke")
+WheelBgStroke.Color = Color3.fromRGB(180, 205, 230)
+WheelBgStroke.Transparency = 0.75
+WheelBgStroke.Thickness = 1.5
+WheelBgStroke.Parent = WheelBackground
+
+-- Wheel Center Close / Title Button
+local WheelCenterBtn = Instance.new("TextButton")
+WheelCenterBtn.Name = "CenterClose"
+WheelCenterBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+WheelCenterBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+WheelCenterBtn.Size = UDim2.new(0, 56, 0, 56)
+WheelCenterBtn.BackgroundColor3 = Color3.fromRGB(38, 52, 68)
+WheelCenterBtn.BackgroundTransparency = 0.2
+WheelCenterBtn.BorderSizePixel = 0
+WheelCenterBtn.Font = Enum.Font.GothamBold
+WheelCenterBtn.Text = "EMOTES\n(CLOSE)"
+WheelCenterBtn.TextColor3 = Color3.fromRGB(220, 235, 250)
+WheelCenterBtn.TextSize = 8
+WheelCenterBtn.AutoButtonColor = true
+WheelCenterBtn.ZIndex = 25
+WheelCenterBtn.Parent = EmoteWheelGui
+
+local CenterCorner = Instance.new("UICorner")
+CenterCorner.CornerRadius = UDim.new(1, 0)
+CenterCorner.Parent = WheelCenterBtn
+
+local CenterStroke = Instance.new("UIStroke")
+CenterStroke.Color = Color3.fromRGB(180, 205, 230)
+CenterStroke.Transparency = 0.7
+CenterStroke.Thickness = 1
+CenterStroke.Parent = WheelCenterBtn
+
+local isWheelOpen = false
+local function toggleEmoteWheel(forcedState)
+    if forcedState ~= nil then
+        isWheelOpen = forcedState
+    else
+        isWheelOpen = not isWheelOpen
+    end
+
+    if isWheelOpen then
+        EmoteWheelGui.Size = UDim2.new(0, 180, 0, 180)
+        EmoteWheelGui.Visible = true
+        TweenService:Create(EmoteWheelGui, wheelOpenTween, {Size = UDim2.new(0, 260, 0, 260)}):Play()
+    else
+        local closeTw = TweenService:Create(EmoteWheelGui, wheelCloseTween, {Size = UDim2.new(0, 180, 0, 180)})
+        closeTw:Play()
+        closeTw.Completed:Connect(function()
+            if not isWheelOpen then
+                EmoteWheelGui.Visible = false
+            end
+        end)
+    end
+end
+
+WheelCenterBtn.MouseButton1Click:Connect(function()
+    toggleEmoteWheel(false)
+end)
+
+-- Distribute Emote Buttons in Circle
+local RADIUS = 92
+local totalEmotes = #EMOTE_DATA
+
+for index, emoteInfo in ipairs(EMOTE_DATA) do
+    local angle = ((index - 1) / totalEmotes) * (2 * math.pi) - (math.pi / 2)
+    local xOffset = math.cos(angle) * RADIUS
+    local yOffset = math.sin(angle) * RADIUS
+
+    local nodeBtn = Instance.new("TextButton")
+    nodeBtn.Name = "EmoteNode_" .. emoteInfo.key
+    nodeBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+    nodeBtn.Position = UDim2.new(0.5, xOffset, 0.5, yOffset)
+    nodeBtn.Size = UDim2.new(0, 48, 0, 48)
+    nodeBtn.BackgroundColor3 = Color3.fromRGB(34, 46, 62)
+    nodeBtn.BackgroundTransparency = 0.25
+    nodeBtn.BorderSizePixel = 0
+    nodeBtn.Text = emoteInfo.icon .. "\n" .. emoteInfo.name
+    nodeBtn.Font = Enum.Font.GothamMedium
+    nodeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nodeBtn.TextSize = 8
+    nodeBtn.AutoButtonColor = true
+    nodeBtn.ZIndex = 23
+    nodeBtn.Parent = EmoteWheelGui
+
+    local nodeCorner = Instance.new("UICorner")
+    nodeCorner.CornerRadius = UDim.new(1, 0)
+    nodeCorner.Parent = nodeBtn
+
+    local nodeStroke = Instance.new("UIStroke")
+    nodeStroke.Color = Color3.fromRGB(180, 205, 230)
+    nodeStroke.Transparency = 0.8
+    nodeStroke.Thickness = 1
+    nodeStroke.Parent = nodeBtn
+
+    nodeBtn.MouseButton1Click:Connect(function()
+        executeEmote(emoteInfo)
+        toggleEmoteWheel(false)
+    end)
+end
+
+---------------------------------------------------------------------
+-- 6. UI BUILDERS
 ---------------------------------------------------------------------
 local function createButton(parent, name, text, color, callback, order)
     local btn = Instance.new("TextButton")
@@ -379,7 +580,7 @@ local function createToggle(parent, name, text, defaultState, callback, order)
 end
 
 ---------------------------------------------------------------------
--- 6. TAB SWITCHING
+-- 7. TAB SWITCHING
 ---------------------------------------------------------------------
 local currentTab = "Actions"
 
@@ -412,7 +613,7 @@ ActionsTabBtn.MouseButton1Click:Connect(function() switchTab("Actions") end)
 SettingsTabBtn.MouseButton1Click:Connect(function() switchTab("Settings") end)
 
 ---------------------------------------------------------------------
--- 7. FEATURE LOGIC & IMPLEMENTATIONS
+-- 8. FEATURE LOGIC & IMPLEMENTATIONS
 ---------------------------------------------------------------------
 
 -- [A] Auto Jump Logic
@@ -463,6 +664,7 @@ end)
 
 local charAddedConn
 charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+    stopCurrentEmote()
     local hum = char:WaitForChild("Humanoid", 6)
     if hum then
         hum.AutoJumpEnabled = autoJumpEnabled
@@ -582,6 +784,8 @@ end
 
 -- [I] Destroy Everything
 local function destroyEverything()
+    stopCurrentEmote()
+
     pcall(function()
         local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then
@@ -607,24 +811,27 @@ local function destroyEverything()
 end
 
 ---------------------------------------------------------------------
--- 8. POPULATE BUTTONS
+-- 9. POPULATE BUTTONS
 ---------------------------------------------------------------------
 
 -- Actions Tab
 createToggle(ActionsContent, "AutoJumpToggle", "Auto Jump", true, setAutoJump, 1)
 createToggle(ActionsContent, "ShiftLockToggle", "Shift Lock", false, toggleShiftLock, 2)
 createToggle(ActionsContent, "CamToggle", "Camera Toggle", false, toggleCameraMode, 3)
-createButton(ActionsContent, "PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 4)
-createButton(ActionsContent, "ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 5)
-createButton(ActionsContent, "RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 6)
-createButton(ActionsContent, "HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 7)
+createButton(ActionsContent, "EmoteWheelBtn", "Emote Wheel", Color3.fromRGB(48, 62, 80), function()
+    toggleEmoteWheel()
+end, 4)
+createButton(ActionsContent, "PerfStatsBtn", "Toggle Perf Stats", Color3.fromRGB(48, 62, 80), togglePerfStats, 5)
+createButton(ActionsContent, "ResetBtn", "Reset", Color3.fromRGB(110, 45, 45), quickReset, 6)
+createButton(ActionsContent, "RejoinBtn", "Rejoin", Color3.fromRGB(48, 62, 80), rejoinGame, 7)
+createButton(ActionsContent, "HopBtn", "Server Hop", Color3.fromRGB(48, 62, 80), serverHop, 8)
 
 -- Settings Tab
 createToggle(SettingsContent, "MuteGameToggle", "Mute Game", false, toggleMuteGame, 1)
 createButton(SettingsContent, "DestroyBtn", "Destroy Everything", Color3.fromRGB(130, 35, 35), destroyEverything, 2)
 
 ---------------------------------------------------------------------
--- 9. SLIDE ANIMATION LOGIC
+-- 10. SLIDE ANIMATION LOGIC
 ---------------------------------------------------------------------
 local isMenuOpen = false
 local slideTweenObj
