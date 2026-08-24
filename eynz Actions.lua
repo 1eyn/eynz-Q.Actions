@@ -8,6 +8,7 @@ local HttpService = game:GetService("HttpService")
 local SoundService = game:GetService("SoundService")
 local CoreGui = game:GetService("CoreGui")
 local StatsService = game:GetService("Stats")
+local TextChatService = game:GetService("TextChatService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -322,14 +323,14 @@ ShiftLockCenterIcon.Parent = ScreenGui
 -- 5. EMOTE WHEEL SYSTEM (R6 & R15 COMPATIBLE)
 ---------------------------------------------------------------------
 local EMOTE_DATA = {
-    { name = "Dance 1", key = "dance1", icon = "🕺", r6 = "rbxassetid://182435998", r15 = "rbxassetid://507771019", loop = true },
-    { name = "Dance 2", key = "dance2", icon = "💃", r6 = "rbxassetid://182436842", r15 = "rbxassetid://507776043", loop = true },
-    { name = "Dance 3", key = "dance3", icon = "✨", r6 = "rbxassetid://182436935", r15 = "rbxassetid://507777268", loop = true },
-    { name = "Point",   key = "point",  icon = "👉", r6 = "rbxassetid://128853357", r15 = "rbxassetid://507770453", loop = false },
-    { name = "Sit",     key = "sit",    icon = "🪑", r6 = nil,                   r15 = nil,                   loop = false },
-    { name = "Laugh",   key = "laugh",  icon = "😂", r6 = "rbxassetid://129423131", r15 = "rbxassetid://507770818", loop = false },
-    { name = "Cheer",   key = "cheer",  icon = "🎉", r6 = "rbxassetid://180611870", r15 = "rbxassetid://507770677", loop = false },
-    { name = "Wave",    key = "wave",   icon = "👋", r6 = "rbxassetid://128777973", r15 = "rbxassetid://507770239", loop = false },
+    { name = "Dance 1", key = "dance1", emoteName = "dance",  folderName = "dance", animName = "dance",     icon = "🕺", r6 = "rbxassetid://182435998", r15 = "rbxassetid://507771019", loop = true },
+    { name = "Dance 2", key = "dance2", emoteName = "dance2", folderName = "dance", animName = "dance2",    icon = "💃", r6 = "rbxassetid://182436842", r15 = "rbxassetid://507776043", loop = true },
+    { name = "Dance 3", key = "dance3", emoteName = "dance3", folderName = "dance", animName = "dance3",    icon = "✨", r6 = "rbxassetid://182436935", r15 = "rbxassetid://507777268", loop = true },
+    { name = "Point",   key = "point",  emoteName = "point",  folderName = "point", animName = "PointAnim", icon = "👉", r6 = "rbxassetid://128853357", r15 = "rbxassetid://507770453", loop = false },
+    { name = "Sit",     key = "sit",    emoteName = "sit",    folderName = "",      animName = "",          icon = "🪑", r6 = nil,                   r15 = nil,                   loop = false },
+    { name = "Laugh",   key = "laugh",  emoteName = "laugh",  folderName = "laugh", animName = "LaughAnim", icon = "😂", r6 = "rbxassetid://129423131", r15 = "rbxassetid://507770818", loop = false },
+    { name = "Cheer",   key = "cheer",  emoteName = "cheer",  folderName = "cheer", animName = "CheerAnim", icon = "🎉", r6 = "rbxassetid://180611870", r15 = "rbxassetid://507770677", loop = false },
+    { name = "Wave",    key = "wave",   emoteName = "wave",   folderName = "wave",  animName = "WaveAnim",  icon = "👋", r6 = "rbxassetid://128777973", r15 = "rbxassetid://507770239", loop = false },
 }
 
 local currentEmoteTrack = nil
@@ -363,32 +364,104 @@ local function executeEmote(data)
         return
     end
 
-    local isR15 = (hum.RigType == Enum.RigType.R15)
-    local animId = isR15 and data.r15 or data.r6
+    local played = false
 
-    if animId then
-        local animObj = Instance.new("Animation")
-        animObj.AnimationId = animId
-
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if not animator then
-            animator = Instance.new("Animator")
-            animator.Parent = hum
+    -- 1. Try invoking Animate script's native PlayEmote BindableFunction
+    local animate = char:FindFirstChild("Animate")
+    if animate then
+        local playEmoteBindable = animate:FindFirstChild("PlayEmote")
+        if playEmoteBindable and playEmoteBindable:IsA("BindableFunction") then
+            local success, res = pcall(function()
+                return playEmoteBindable:Invoke(data.emoteName)
+            end)
+            if success and res ~= false then
+                played = true
+            end
         end
+    end
 
-        local track = animator:LoadAnimation(animObj)
-        track.Priority = Enum.AnimationPriority.Action
-        track.Looped = data.loop
-        track:Play(0.15)
-        currentEmoteTrack = track
-
-        -- Cancel emote on walk/jump
-        emoteMoveConn = hum.Running:Connect(function(speed)
-            if speed > 0.5 then
-                stopCurrentEmote()
+    -- 2. Try Humanoid:PlayEmote()
+    if not played then
+        pcall(function()
+            if hum:PlayEmote(data.emoteName) then
+                played = true
             end
         end)
     end
+
+    -- 3. Try using the Animation object inside character.Animate
+    if not played and animate then
+        pcall(function()
+            local folder = animate:FindFirstChild(data.folderName or data.emoteName) or animate:FindFirstChild(data.emoteName)
+            local animObj = nil
+            if folder then
+                if folder:IsA("Animation") then
+                    animObj = folder
+                else
+                    animObj = folder:FindFirstChild(data.animName or data.emoteName) or folder:FindFirstChildOfClass("Animation")
+                end
+            end
+
+            if animObj and animObj:IsA("Animation") then
+                local animator = hum:FindFirstChildOfClass("Animator") or hum
+                local track = animator:LoadAnimation(animObj)
+                track.Priority = Enum.AnimationPriority.Action4
+                track.Looped = data.loop
+                track:Play(0.15)
+                currentEmoteTrack = track
+                played = true
+            end
+        end)
+    end
+
+    -- 4. Direct Fallback with raw AnimationId
+    if not played then
+        pcall(function()
+            local isR15 = (hum.RigType == Enum.RigType.R15)
+            local animId = isR15 and data.r15 or data.r6
+
+            if animId then
+                local animObj = Instance.new("Animation")
+                animObj.AnimationId = animId
+
+                local animator = hum:FindFirstChildOfClass("Animator")
+                if not animator then
+                    animator = Instance.new("Animator")
+                    animator.Parent = hum
+                end
+
+                local track = animator:LoadAnimation(animObj)
+                track.Priority = Enum.AnimationPriority.Action4
+                track.Looped = data.loop
+                track:Play(0.15)
+                currentEmoteTrack = track
+                played = true
+            end
+        end)
+    end
+
+    -- 5. Chat Emote Fallback (For games with chat command emote listeners)
+    pcall(function()
+        if Players.LocalPlayer and Players.Chat then
+            Players:Chat("/e " .. data.emoteName)
+        end
+    end)
+    pcall(function()
+        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+            local textChannels = TextChatService:FindFirstChild("TextChannels")
+            local generalChannel = textChannels and textChannels:FindFirstChild("RBXGeneral")
+            if generalChannel then
+                generalChannel:SendAsync("/e " .. data.emoteName)
+            end
+        end
+    end)
+
+    -- Cancel emote on walk/jump
+    emoteMoveConn = hum.Running:Connect(function(speed)
+        if speed > 0.5 then
+            stopCurrentEmote()
+        end
+    end)
 end
 
 -- Emote Wheel UI Elements
